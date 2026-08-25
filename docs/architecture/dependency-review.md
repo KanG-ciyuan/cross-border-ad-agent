@@ -15,13 +15,22 @@ This review covers the direct packages planned for the MVP workflow foundation a
 | `react-router-dom` | 7.18.2 | `remix-run/react-router` | MIT | None |
 | `vite` | 8.2.2 | `vitejs/vite` | MIT | None |
 | `@vitejs/plugin-react` | 6.1.0 | `vitejs/vite-plugin-react` | MIT | None |
-| `hono` | 4.13.4 | `honojs/hono` | MIT | None |
+| `hono` | 4.13.2 | `honojs/hono` | MIT | None |
 | `zod` | 4.4.3 | `colinhacks/zod` | MIT | None |
 | `vitest` | 4.1.11 | `vitest-dev/vitest` | MIT | None |
 | `@cloudflare/vitest-pool-workers` | 0.22.0 | `cloudflare/workers-sdk` | MIT | None |
 | `@playwright/test` | 1.62.1 | `microsoft/playwright` | Apache-2.0 | None |
-| `lucide-react` | 1.34.0 | `lucide-icons/lucide` | ISC | None |
+| `lucide-react` | 1.31.0 | `lucide-icons/lucide` | ISC | None |
 | `wrangler` | 4.125.0 | `cloudflare/workers-sdk` | MIT OR Apache-2.0 | None |
+| `typescript` | 5.9.x | `microsoft/TypeScript` | Apache-2.0 | None |
+| `@testing-library/react` | 16.3.2 | `testing-library/react-testing-library` | MIT | None |
+| `@testing-library/jest-dom` | 7.0.1 | `testing-library/jest-dom` | MIT | None |
+| `@testing-library/user-event` | 14.6.6 | `testing-library/user-event` | MIT | None |
+| `jsdom` | 30.0.1 | `jsdom/jsdom` | MIT | None |
+| `@types/react` | 19.2.18 | `DefinitelyTyped/DefinitelyTyped` | MIT | None |
+| `@types/react-dom` | 19.2.5 | `DefinitelyTyped/DefinitelyTyped` | MIT | None |
+| `@types/node` | 26.2.0 | `DefinitelyTyped/DefinitelyTyped` | MIT | None |
+| `@cloudflare/workers-types` | 5.20260820.1 | `cloudflare/workerd` | MIT OR Apache-2.0 | None |
 
 The reviewed versions are compatible with the installed Node.js `22.22.3`. `@cloudflare/vitest-pool-workers` 0.22.0 declares Vitest 4.1 compatibility.
 
@@ -46,6 +55,8 @@ The reviewed versions are compatible with the installed Node.js `22.22.3`. `@clo
 - It does not request elevated permissions or write to a system binary directory.
 
 The lack of a content-hash check in the `workerd` fallback path is a residual supply-chain risk. Normal installation should use the lockfile integrity and platform optional dependency instead of the fallback download.
+
+The same script was reviewed for transitive `workerd` 1.20260815.1, which is required by the Cloudflare Vitest pool. It has the same platform-package selection, project-local write behavior, npm fallback, and version validation pattern.
 
 ## Network Behavior
 
