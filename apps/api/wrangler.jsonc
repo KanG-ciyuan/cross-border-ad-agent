@@ -15,6 +15,7 @@
   "vars": {
     "APP_ENV": "local",
     "VIDEO_GENERATION_PROVIDER": "minimax",
+    "MINIMAX_BASE_URL": "https://api.minimaxi.com",
     "MINIMAX_MODEL_ID": "MiniMax-H3",
     "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
     "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-local-db",
@@ -40,6 +41,7 @@
       "vars": {
         "APP_ENV": "preview",
         "VIDEO_GENERATION_PROVIDER": "minimax",
+        "MINIMAX_BASE_URL": "https://api.minimaxi.com",
         "MINIMAX_MODEL_ID": "MiniMax-H3",
         "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
         "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-preview-db",

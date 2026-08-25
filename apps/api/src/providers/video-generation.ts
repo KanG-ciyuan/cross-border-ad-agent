@@ -7,6 +7,7 @@ type VideoProviderBindings = Pick<
   Partial<Env>,
   | "VIDEO_GENERATION_PROVIDER"
   | "MINIMAX_API_KEY"
+  | "MINIMAX_BASE_URL"
   | "MINIMAX_MODEL_ID"
   | "ARK_API_KEY"
   | "SEEDANCE_MODEL_ID"
@@ -23,6 +24,7 @@ export function createVideoGenerationProvider(
   }
   return new MiniMaxProvider({
     apiKey: bindings.MINIMAX_API_KEY ?? "",
+    baseUrl: bindings.MINIMAX_BASE_URL,
     model: bindings.MINIMAX_MODEL_ID
   });
 }

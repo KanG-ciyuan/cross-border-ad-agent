@@ -35,8 +35,8 @@ This report covers local acceptance only. It is not evidence of production readi
 
 ## MiniMax H3 integration boundary
 
-- Official create endpoint: `POST https://api.minimax.io/v2/video_generation`.
-- Official query endpoint: `GET https://api.minimax.io/v2/query/video_generation/{task_id}`.
+- Domestic create endpoint: `POST https://api.minimaxi.com/v2/video_generation`.
+- Domestic query endpoint: `GET https://api.minimaxi.com/v2/query/video_generation/{task_id}`.
 - Model ID: `MiniMax-H3`; the server-side key binding name is `MINIMAX_API_KEY`.
 - The adapter defaults to TikTok `9:16`, 768P, and accepts the official 4-15 second integer duration range. It supports up to 9 reference images and up to 3 reference videos.
 - Official pay-as-you-go pricing observed on 2026-08-25 was USD 0.08 per output second for 768P and USD 0.13 per output second for 2K, excluding chargeable extra reference images or input-video duration. Pricing must be refreshed before production budgeting.

@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { MiniMaxProvider, MiniMaxProviderError } from "../src/providers/minimax";
 
 describe("MiniMaxProvider", () => {
+  it("rejects a non-HTTPS API base URL", () => {
+    expect(() => new MiniMaxProvider({
+      apiKey: "test-only-minimax-key",
+      baseUrl: "http://api.minimaxi.com"
+    })).toThrowError("MINIMAX_INVALID_BASE_URL");
+  });
+
   it("creates an H3 reference-to-video task using the official V2 request shape", async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ task_id: "424010985738629" }));
     const provider = new MiniMaxProvider({
@@ -21,7 +28,7 @@ describe("MiniMaxProvider", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.minimax.io/v2/video_generation");
+    expect(url).toBe("https://api.minimaxi.com/v2/video_generation");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer test-only-minimax-key");
     expect(JSON.parse(String(init.body))).toEqual({
       model: "MiniMax-H3",
@@ -68,7 +75,7 @@ describe("MiniMaxProvider", () => {
       resolution: "2K"
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.minimax.io/v2/query/video_generation/424010985738629",
+      "https://api.minimaxi.com/v2/query/video_generation/424010985738629",
       expect.objectContaining({ method: "GET" })
     );
   });

@@ -6,6 +6,7 @@ export interface Env {
   ARK_API_KEY?: string;
   SEEDANCE_MODEL_ID?: string;
   MINIMAX_API_KEY?: string;
+  MINIMAX_BASE_URL?: string;
   MINIMAX_MODEL_ID?: string;
   VIDEO_GENERATION_PROVIDER?: "minimax" | "seedance";
   DECLARED_D1_DATABASE_NAME: string;

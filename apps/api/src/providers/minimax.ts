@@ -5,7 +5,7 @@ import type {
   VideoGenerationTask
 } from "./types";
 
-const DEFAULT_BASE_URL = "https://api.minimax.io";
+export const DEFAULT_MINIMAX_BASE_URL = "https://api.minimaxi.com";
 export const DEFAULT_MINIMAX_MODEL = "MiniMax-H3";
 const CREATE_PATH = "/v2/video_generation";
 const QUERY_PATH = "/v2/query/video_generation";
@@ -72,6 +72,16 @@ function requireHttpsUrl(value: string) {
   }
 }
 
+function normalizeBaseUrl(value?: string) {
+  const baseUrl = value?.trim() || DEFAULT_MINIMAX_BASE_URL;
+  try {
+    if (new URL(baseUrl).protocol !== "https:") throw new Error("not https");
+  } catch {
+    throw new MiniMaxProviderError("MINIMAX_INVALID_BASE_URL", 0, false);
+  }
+  return baseUrl.replace(/\/$/, "");
+}
+
 function minimaxResolution(value: VideoGenerationInput["resolution"]): "768P" | "2K" {
   return value === "2K" || value === "1080p" ? "2K" : "768P";
 }
@@ -88,7 +98,7 @@ export class MiniMaxProvider implements VideoGenerationProvider {
     }
     this.apiKey = options.apiKey;
     this.model = options.model?.trim() || DEFAULT_MINIMAX_MODEL;
-    this.baseUrl = (options.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/$/, "");
+    this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.fetcher = options.fetch ?? fetch;
   }
 
