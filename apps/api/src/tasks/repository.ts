@@ -194,6 +194,42 @@ export class TaskRepository {
     return result.results.map(mapTask);
   }
 
+  async updateTaskStatus(
+    taskId: string,
+    userId: string,
+    status: string,
+    updatedAt: number
+  ): Promise<boolean> {
+    const result = await this.db
+      .prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+      .bind(status, updatedAt, taskId, userId)
+      .run();
+    return result.meta.changes === 1;
+  }
+
+  async updateTaskDraft(
+    taskId: string,
+    userId: string,
+    input: { title?: string; budgetFen?: number | null },
+    updatedAt: number
+  ): Promise<TaskRecord | null> {
+    const current = await this.getTaskForUser(taskId, userId);
+    if (!current || current.status !== "draft") return null;
+    await this.db
+      .prepare(
+        "UPDATE tasks SET title = ?, budget_fen = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'draft'"
+      )
+      .bind(
+        input.title ?? current.title,
+        input.budgetFen === undefined ? current.budgetFen : input.budgetFen,
+        updatedAt,
+        taskId,
+        userId
+      )
+      .run();
+    return this.getTaskForUser(taskId, userId);
+  }
+
   async saveAsset(input: {
     id: string;
     taskId: string;

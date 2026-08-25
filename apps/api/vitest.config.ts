@@ -11,7 +11,8 @@ export default defineConfig({
     cloudflareTest({
       miniflare: {
         bindings: { TEST_MIGRATIONS: migrations },
-        d1Databases: ["DB"]
+        d1Databases: ["DB"],
+        r2Buckets: ["MEDIA"]
       }
     })
   ],
