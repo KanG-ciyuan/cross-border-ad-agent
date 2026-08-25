@@ -65,13 +65,13 @@ describe("CreateTaskPage", () => {
     const valid = new File(["image"], "front.jpg", { type: "image/jpeg" });
     const invalid = new File(["notes"], "notes.txt", { type: "text/plain" });
     const tooLarge = new File(["video"], "large.mp4", { type: "video/mp4" });
-    Object.defineProperty(tooLarge, "size", { value: 100 * 1024 * 1024 + 1 });
+    Object.defineProperty(tooLarge, "size", { value: 25 * 1024 * 1024 + 1 });
 
     await user.upload(screen.getByLabelText("上传产品图片"), [valid, invalid, tooLarge]);
 
     expect(screen.getByText("已选择，提交任务后上传")).toBeInTheDocument();
     expect(screen.getByText("文件类型不支持")).toBeInTheDocument();
-    expect(screen.getByText("文件超过 100 MB")).toBeInTheDocument();
+    expect(screen.getByText("文件超过 25 MB")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "移除 front.jpg" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重新选择 notes.txt" })).toBeInTheDocument();
     expect(screen.queryByText(/(上传中|上传完成|上传进度)/)).not.toBeInTheDocument();

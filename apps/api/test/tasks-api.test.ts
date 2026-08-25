@@ -89,7 +89,10 @@ describe("task API", () => {
     );
 
     expect(complete.status).toBe(201);
-    expect(await complete.json()).toMatchObject({ task: { goal: "complete_creation" } });
+    const completeBody = (await complete.json()) as { task: Record<string, unknown> };
+    expect(completeBody).toMatchObject({ task: { goal: "complete_creation" } });
+    expect(completeBody.task).not.toHaveProperty("companyId");
+    expect(completeBody.task).not.toHaveProperty("userId");
     expect(editOnly.status).toBe(201);
     expect(await editOnly.json()).toMatchObject({ task: { goal: "edit_only" } });
   });
@@ -146,18 +149,27 @@ describe("task API", () => {
       bindings
     );
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
-    await new TaskRepository(env.DB).updateTaskStatus(taskId, "usr_owner", "awaiting_generation_approval", Date.now());
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskDraft(taskId, "usr_owner", { budgetFen: 12_000 }, Date.now());
+    await repository.updateTaskStatus(taskId, "usr_owner", "awaiting_generation_approval", Date.now());
+    await repository.saveVersion({
+      id: "ver_costplan01", taskId, versionNumber: 1, createdAt: Date.now(),
+      editPlan: { version: "edit_plan.v1", taskId, output: { width: 1080, height: 1920, fps: 30, language: "id-ID" },
+        tracks: [{ id: "trk_video001", type: "video", clips: [{ id: "clp_video001", assetId: "ast_video001", startMs: 0, endMs: 1000, origin: "generated" }] }],
+        cost: { currency: "CNY", estimatedFen: 12_001, limitFen: 20_000 }, approvals: [] }
+    });
 
     for (const kind of ["reference", "storyboard", "cost", "risk"]) {
       await createApp().fetch(
         apiRequest(`/api/tasks/${taskId}/approvals`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind, decision: "approved", snapshot: {} })
+          headers: { "Content-Type": "application/json", "Idempotency-Key": `approval-${kind}` },
+          body: JSON.stringify({ kind, decision: "approved", snapshot: kind === "cost" ? { versionId: "ver_costplan01" } : {} })
         }),
         bindings
       );
     }
+    await new TaskRepository(env.DB).updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
 
     const response = await createApp().fetch(
       apiRequest(`/api/tasks/${taskId}/render`, {
@@ -166,7 +178,7 @@ describe("task API", () => {
           "Content-Type": "application/json",
           "Idempotency-Key": "render-over-limit"
         },
-        body: JSON.stringify({ estimatedFen: 12_001, limitFen: 12_000 })
+        body: JSON.stringify({})
       }),
       bindings
     );
@@ -185,6 +197,7 @@ describe("task API", () => {
       bindings
     );
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    await new TaskRepository(env.DB).updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
     const response = await createApp().fetch(
       apiRequest(`/api/tasks/${taskId}/render`, {
         method: "POST",
@@ -192,7 +205,7 @@ describe("task API", () => {
           "Content-Type": "application/json",
           "Idempotency-Key": "render-without-confirmation"
         },
-        body: JSON.stringify({ estimatedFen: 1_000, limitFen: 2_000 })
+        body: JSON.stringify({})
       }),
       bindings
     );
@@ -225,7 +238,7 @@ describe("task API", () => {
       createApp().fetch(
         apiRequest(`/api/tasks/${taskId}/review`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Idempotency-Key": `review-${action}` },
           body: JSON.stringify({ action })
         }),
         bindings
@@ -233,8 +246,97 @@ describe("task API", () => {
 
     expect((await review("approve_final")).status).toBe(409);
     expect((await review("approve_content")).status).toBe(200);
+    expect((await review("approve_content")).status).toBe(200);
     expect((await review("approve_final")).status).toBe(200);
     expect((await repository.getTaskForUser(taskId, "usr_owner"))?.status).toBe("approved");
+    expect((await repository.getLatestApproval(taskId, "usr_owner", "content"))?.decision).toBe("approved");
+    expect((await repository.getLatestApproval(taskId, "usr_owner", "final"))?.decision).toBe("approved");
+  });
+
+  it("rejects client cost overrides and draft-to-render state skips", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const withCosts = await createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "render-cost-override" },
+      body: JSON.stringify({ estimatedFen: 1, limitFen: 999_999 })
+    }), bindings);
+    const skipped = await createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "render-skip" },
+      body: JSON.stringify({})
+    }), bindings);
+    expect(withCosts.status).toBe(400);
+    expect(skipped.status).toBe(409);
+  });
+
+  it("returns the same render attempt for a repeated idempotency key", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    const render = () => createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "render-once" },
+      body: JSON.stringify({})
+    }), bindings);
+    const first = await render();
+    const second = await render();
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(await first.json()).toEqual(await second.json());
+    expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(1);
+  });
+
+  it("allows only one concurrent render transition across different keys", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    const render = (key: string) => createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: "{}"
+    }), bindings);
+    const responses = await Promise.all([render("render-concurrent-a"), render("render-concurrent-b")]);
+    expect(responses.map((response) => response.status).sort()).toEqual([202, 409]);
+    expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(1);
+  });
+
+  it("rejects reused idempotency keys with a different approval payload", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(completeCreation)
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const approve = (kind: string) => createApp().fetch(apiRequest(`/api/tasks/${taskId}/approvals`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "approval-payload" },
+      body: JSON.stringify({ kind, decision: "approved", snapshot: {} })
+    }), bindings);
+    expect((await approve("reference")).status).toBe(201);
+    expect((await approve("storyboard")).status).toBe(409);
+  });
+
+  it("atomically records only one concurrent content review", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "pending_content_review", Date.now());
+    const review = (key: string) => createApp().fetch(apiRequest(`/api/tasks/${taskId}/review`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+      body: JSON.stringify({ action: "approve_content" })
+    }), bindings);
+    const responses = await Promise.all([review("review-concurrent-a"), review("review-concurrent-b")]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM approvals WHERE task_id = ? AND kind = 'content'")
+      .bind(taskId).first<{ total: number }>();
+    expect(count?.total).toBe(1);
   });
 
   it("uses one analysis attempt for duplicate idempotency keys", async () => {

@@ -46,6 +46,16 @@ describe("FakeAnalysisProvider", () => {
     }
   });
 
+  it.each([
+    { referenceGeneration: ["three_view"] as const, references: 3, storyboard: 0 },
+    { referenceGeneration: ["nine_grid"] as const, references: 0, storyboard: 9 },
+    { referenceGeneration: [] as const, references: 0, storyboard: 0 }
+  ])("honors selected reference outputs", async ({ referenceGeneration, references, storyboard }) => {
+    const result = await new FakeAnalysisProvider().analyze({ ...completeInput, referenceGeneration });
+    expect(result.references).toHaveLength(references);
+    expect(result.storyboard).toHaveLength(storyboard);
+  });
+
   it("uses only uploaded assets and allowed operations for edit-only plans", async () => {
     const result = await new FakeAnalysisProvider().analyze({
       taskId: "tsk_editonly1",

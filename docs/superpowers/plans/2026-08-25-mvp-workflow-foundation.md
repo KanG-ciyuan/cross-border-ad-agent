@@ -347,7 +347,7 @@ git commit -m "feat: add invite-only authentication"
 
 - [ ] **Step 1: Write failing API tests**
 
-Cover task creation for both goals, rejection of generation fields in edit-only mode, list/detail ownership, reference approval, storyboard approval, content review, final approval, cost-limit conflicts, duplicate idempotency keys, accepted media types, filename normalization, and a 100 MB per-file MVP limit.
+Cover task creation for both goals, rejection of generation fields in edit-only mode, list/detail ownership, reference approval, storyboard approval, content review, final approval, cost-limit conflicts, duplicate idempotency keys, accepted media types, filename normalization, and a 25 MB per-file raw streaming-upload MVP limit. Larger files require a later direct-to-R2 upload flow.
 
 - [ ] **Step 2: Run tests and confirm failure**
 

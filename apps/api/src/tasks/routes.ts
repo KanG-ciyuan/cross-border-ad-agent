@@ -1,4 +1,4 @@
-import { TaskCreateInput, TaskStatus } from "@ad-agent/contracts";
+import { EditPlanV1, TaskCreateInput, TaskStatus } from "@ad-agent/contracts";
 import { evaluateGeneration, transition, type WorkflowEvent } from "@ad-agent/workflow";
 import { Hono } from "hono";
 import type { Env } from "../env";
@@ -35,6 +35,11 @@ function nextStatus(task: TaskRecord, event: WorkflowEvent) {
   return transition(TaskStatus.parse(task.status), event);
 }
 
+function publicTask(task: TaskRecord) {
+  const { userId: _userId, companyId: _companyId, ...clientTask } = task;
+  return clientTask;
+}
+
 export function createTaskRoutes() {
   const routes = new Hono<{ Bindings: Env }>();
 
@@ -65,14 +70,14 @@ export function createTaskRoutes() {
       aiVideoEnabled: input.goal === "complete_creation",
       createdAt: Date.now()
     });
-    return context.json({ task }, 201);
+    return context.json({ task: publicTask(task) }, 201);
   });
 
   routes.get("/", async (context) => {
     const user = await getAuthenticatedUser(context);
     if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
     const tasks = await new TaskRepository(context.env.DB).listTasksForUser(user.id);
-    return context.json({ tasks });
+    return context.json({ tasks: tasks.map(publicTask) });
   });
 
   routes.get("/:taskId", async (context) => {
@@ -82,8 +87,8 @@ export function createTaskRoutes() {
     const task = await repository.getTaskForUser(context.req.param("taskId"), user.id);
     if (!task) return context.json(error("NOT_FOUND", "Task not found"), 404);
     return context.json({
-      task,
-      assets: await repository.listAssetsForTask(task.id, user.id),
+      task: publicTask(task),
+      assets: (await repository.listAssetsForTask(task.id, user.id)).map(({ objectKey: _objectKey, companyId: _companyId, ...asset }) => asset),
       costFen: await repository.sumCostFen(task.id, user.id),
       versions: await repository.listVersions(task.id, user.id)
     });
@@ -102,7 +107,7 @@ export function createTaskRoutes() {
       { title: body.title as string | undefined, budgetFen: body.budgetFen as number | null | undefined },
       Date.now()
     );
-    return task ? context.json({ task }) : context.json(error("CONFLICT", "Draft cannot be changed"), 409);
+    return task ? context.json({ task: publicTask(task) }) : context.json(error("CONFLICT", "Draft cannot be changed"), 409);
   });
 
   routes.post("/:taskId/analyze", async (context) => {
@@ -144,8 +149,18 @@ export function createTaskRoutes() {
       note: typeof body.note === "string" ? body.note : undefined,
       snapshot: body.snapshot ?? {}, createdAt: Date.now()
     };
-    await repository.saveApproval(approval);
-    return context.json({ approval }, 201);
+    const key = context.req.header("Idempotency-Key");
+    if (!key) return context.json(error("CONFLICT", "Idempotency-Key is required"), 409);
+    try {
+      const saved = await repository.saveApprovalWithIdempotency({ ...approval, companyId: access.user.companyId, key });
+      if (!saved.created && (saved.approval.kind !== approval.kind || saved.approval.decision !== approval.decision ||
+        (saved.approval.note ?? undefined) !== approval.note || JSON.stringify(saved.approval.snapshot) !== JSON.stringify(approval.snapshot))) {
+        return context.json(error("CONFLICT", "Idempotency-Key was used with a different approval payload"), 409);
+      }
+      return context.json({ approval: saved.approval }, saved.created ? 201 : 200);
+    } catch {
+      return context.json(error("CONFLICT", "Idempotency-Key was used for another operation"), 409);
+    }
   });
 
   routes.post("/:taskId/render", async (context) => {
@@ -154,51 +169,101 @@ export function createTaskRoutes() {
     const key = context.req.header("Idempotency-Key");
     if (!key) return context.json(error("CONFLICT", "Idempotency-Key is required"), 409);
     const body = await jsonBody(context) as Record<string, unknown> | null;
-    if (!body || !Number.isInteger(body.estimatedFen) || !Number.isInteger(body.limitFen)) {
-      return context.json(error("INVALID_INPUT", "Cost input is invalid"), 400);
+    if (!body || body.estimatedFen !== undefined || body.limitFen !== undefined) {
+      return context.json(error("INVALID_INPUT", "Client-provided costs are not accepted"), 400);
     }
     const repository = new TaskRepository(context.env.DB);
     const task = await repository.getTaskForUser(context.req.param("taskId"), access.user.id);
     if (!task) return context.json(error("NOT_FOUND", "Task not found"), 404);
+    const previousAttemptId = await repository.getAttemptForIdempotency({ companyId: access.user.companyId,
+      key, userId: access.user.id, taskId: task.id, operation: "render" });
+    if (previousAttemptId) return context.json({ attemptId: previousAttemptId }, 202);
+    if (task.status !== "ready_to_render") return context.json(error("CONFLICT", "Task is not ready to render"), 409);
     if (task.goal === "complete_creation") {
       const approved = async (kind: string) =>
         (await repository.getLatestApproval(task.id, access.user.id, kind))?.decision === "approved";
+      const referenceApproved = await approved("reference");
+      const storyboardApproved = await approved("storyboard");
+      const costApproved = await approved("cost");
+      const riskApproved = await approved("risk");
+      const costApproval = await repository.getLatestApproval(task.id, access.user.id, "cost");
+      const costSnapshot = costApproval?.snapshot as { versionId?: unknown } | undefined;
       const decision = evaluateGeneration({
         goal: task.goal,
-        referenceApproved: await approved("reference"),
-        storyboardApproved: await approved("storyboard"),
-        costApproved: await approved("cost"),
-        riskApproved: await approved("risk"),
-        estimatedFen: body.estimatedFen as number,
-        limitFen: body.limitFen as number
+        referenceApproved,
+        storyboardApproved,
+        costApproved,
+        riskApproved,
+        estimatedFen: 0,
+        limitFen: 1
       });
       if (!decision.allowed) return context.json(error(decision.reason, "Generation is blocked"), 409);
+      const latestVersion = (await repository.listVersions(task.id, access.user.id))[0];
+      const plan = latestVersion ? EditPlanV1.safeParse(latestVersion.editPlan) : null;
+      if (!latestVersion || !plan?.success || costSnapshot?.versionId !== latestVersion.id) {
+        return context.json(error("COST_APPROVAL_REQUIRED", "Cost approval must reference the persisted edit plan"), 409);
+      }
+      const costDecision = evaluateGeneration({
+        goal: task.goal,
+        referenceApproved,
+        storyboardApproved,
+        costApproved,
+        riskApproved,
+        estimatedFen: plan.data.cost.estimatedFen,
+        limitFen: task.budgetFen ?? plan.data.cost.limitFen
+      });
+      if (!costDecision.allowed) return context.json(error(costDecision.reason, "Generation is blocked"), 409);
     }
     const now = Date.now();
-    const reservation = await repository.reserveStepAttempt({
-      idempotencyKey: key, companyId: access.user.companyId, userId: access.user.id,
-      taskId: task.id, operation: "render",
-      attempt: { id: `atm_${crypto.randomUUID()}`, step: "render", attemptNumber: 1,
-        status: "queued", provider: "pending", request: body, createdAt: now },
-      expiresAt: now + 86_400_000
-    });
-    if (reservation.reserved) await repository.updateTaskStatus(task.id, access.user.id, "rendering", now);
-    return context.json({ attemptId: reservation.attemptId }, 202);
+    try {
+      const reservation = await repository.reserveStepAttempt({
+        idempotencyKey: key, companyId: access.user.companyId, userId: access.user.id,
+        taskId: task.id, operation: "render",
+        attempt: { id: `atm_${crypto.randomUUID()}`, step: "render", attemptNumber: 1,
+          status: "queued", provider: "pending", request: body, createdAt: now },
+        expiresAt: now + 86_400_000, expectedStatus: "ready_to_render", nextStatus: "rendering"
+      });
+      return context.json({ attemptId: reservation.attemptId }, 202);
+    } catch {
+      return context.json(error("CONFLICT", "Task status changed before rendering started"), 409);
+    }
   });
 
   routes.post("/:taskId/review", async (context) => {
     const access = await requireMutationUser(context);
     if ("failure" in access) return context.json(error("FORBIDDEN", "Request denied"), access.failure === "origin" ? 403 : 401);
     const body = await jsonBody(context) as { action?: WorkflowEvent } | null;
+    const key = context.req.header("Idempotency-Key");
+    if (!key) return context.json(error("CONFLICT", "Idempotency-Key is required"), 409);
     if (!body || !["approve_content", "approve_final"].includes(String(body.action))) {
       return context.json(error("INVALID_INPUT", "Review action is invalid"), 400);
     }
     const repository = new TaskRepository(context.env.DB);
     const task = await repository.getTaskForUser(context.req.param("taskId"), access.user.id);
     if (!task) return context.json(error("NOT_FOUND", "Task not found"), 404);
+    const previous = await repository.getApprovalForIdempotency({ companyId: access.user.companyId,
+      key, userId: access.user.id, taskId: task.id });
+    if (previous) {
+      const snapshot = previous.snapshot as { action?: unknown; statusAfter?: unknown };
+      if (snapshot.action !== body.action || typeof snapshot.statusAfter !== "string") {
+        return context.json(error("CONFLICT", "Idempotency-Key was used for another review action"), 409);
+      }
+      return context.json({ status: snapshot.statusAfter });
+    }
     try {
       const status = nextStatus(task, body.action!);
-      await repository.updateTaskStatus(task.id, access.user.id, status, Date.now());
+      const approvalKind = body.action === "approve_content" ? "content" : "final";
+      const reviewAction = body.action as "approve_content" | "approve_final";
+      const saved = await repository.approveReviewTransition({ id: `apr_${crypto.randomUUID()}`, taskId: task.id,
+        userId: access.user.id, companyId: access.user.companyId, key, kind: approvalKind,
+        action: reviewAction, expectedStatus: task.status, nextStatus: status, createdAt: Date.now() });
+      if (!saved.created) {
+        const snapshot = saved.approval.snapshot as { action?: unknown; statusAfter?: unknown };
+        if (snapshot.action !== body.action || typeof snapshot.statusAfter !== "string") {
+          return context.json(error("CONFLICT", "Idempotency-Key was used for another review action"), 409);
+        }
+        return context.json({ status: snapshot.statusAfter });
+      }
       return context.json({ status });
     } catch {
       return context.json(error("CONFLICT", "Review step cannot be skipped"), 409);

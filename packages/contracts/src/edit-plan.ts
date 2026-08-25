@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const id = (prefix: string) => z.string().regex(
-  new RegExp(`^${prefix}_[A-Za-z0-9]{8,}$`),
+  new RegExp(`^${prefix}_[A-Za-z0-9-]{8,}$`),
   `Expected an opaque ${prefix} identifier`
 );
 

@@ -3,7 +3,8 @@ import type { Env } from "../env";
 import { getAuthenticatedUser, isSameOrigin } from "../auth/session";
 import { TaskRepository } from "../tasks/repository";
 
-const MAX_FILE_BYTES = 100 * 1024 * 1024;
+// Multipart parsing buffers the body in the current MVP. Larger files require direct R2 upload.
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const allowedTypes = new Set([
   "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"
 ]);
@@ -25,6 +26,10 @@ function normalizeFilename(filename: string): string {
   return basename.replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, "_").trim().slice(0, 120) || "upload";
 }
 
+function decodeFilename(value: string): string {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
 export function createUploadRoutes() {
   const routes = new Hono<{ Bindings: Env }>();
 
@@ -32,39 +37,64 @@ export function createUploadRoutes() {
     if (!isSameOrigin(context.req.raw)) return context.json(error("FORBIDDEN", "Request denied"), 403);
     const user = await getAuthenticatedUser(context);
     if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
-    const declaredLength = Number(context.req.header("Content-Length") ?? 0);
-    if (declaredLength > MAX_FILE_BYTES) return context.json(error("FILE_TOO_LARGE", "File exceeds 100 MB"), 413);
+    const lengthHeader = context.req.header("Content-Length");
+    if (!lengthHeader) return context.json(error("LENGTH_REQUIRED", "Content-Length is required for buffered uploads"), 411);
+    const declaredLength = Number(lengthHeader);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength <= 0) {
+      return context.json(error("INVALID_INPUT", "Content-Length is invalid"), 400);
+    }
+    if (declaredLength > MAX_FILE_BYTES) return context.json(error("FILE_TOO_LARGE", "File exceeds 25 MB"), 413);
 
     const repository = new TaskRepository(context.env.DB);
     const task = await repository.getTaskForUser(context.req.param("taskId"), user.id);
     if (!task) return context.json(error("NOT_FOUND", "Task not found"), 404);
 
-    let body: Record<string, string | File>;
-    try {
-      body = await context.req.parseBody();
-    } catch {
-      return context.json(error("INVALID_INPUT", "Multipart form is invalid"), 400);
-    }
-    const file = body.file;
-    if (!(file instanceof File)) return context.json(error("INVALID_INPUT", "A file is required"), 400);
-    if (file.size > MAX_FILE_BYTES) return context.json(error("FILE_TOO_LARGE", "File exceeds 100 MB"), 413);
-    const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-    if (!allowedTypes.has(file.type) || !hasSignature(file.type, header)) {
+    const mimeType = context.req.header("Content-Type")?.split(";", 1)[0]?.trim() ?? "";
+    const filename = context.req.header("X-Filename");
+    const source = context.req.raw.body;
+    if (!filename || !source) return context.json(error("INVALID_INPUT", "Raw file body and X-Filename are required"), 400);
+    if (!allowedTypes.has(mimeType)) {
       return context.json(error("UNSUPPORTED_MEDIA_TYPE", "Media type is not supported"), 415);
     }
+    const [inspectionStream, uploadStream] = source.tee();
+    const reader = inspectionStream.getReader();
+    const first = await reader.read();
+    await reader.cancel();
+    const header = first.value?.slice(0, 16) ?? new Uint8Array();
+    if (!hasSignature(mimeType, header)) return context.json(error("UNSUPPORTED_MEDIA_TYPE", "Media type is not supported"), 415);
 
     const assetId = `ast_${crypto.randomUUID()}`;
     const objectKey = `assets/${crypto.randomUUID()}`;
-    await context.env.MEDIA.put(objectKey, file.stream(), {
-      httpMetadata: { contentType: file.type },
-      customMetadata: { assetId }
-    });
+    let receivedBytes = 0;
+    const countedStream = uploadStream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        receivedBytes += chunk.byteLength;
+        if (receivedBytes > declaredLength || receivedBytes > MAX_FILE_BYTES) throw new Error("UPLOAD_LENGTH_MISMATCH");
+        controller.enqueue(chunk);
+      }
+    }));
+    try {
+      const fixedLength = new FixedLengthStream(declaredLength);
+      await Promise.all([
+        countedStream.pipeTo(fixedLength.writable),
+        context.env.MEDIA.put(objectKey, fixedLength.readable, {
+          httpMetadata: { contentType: mimeType }, customMetadata: { assetId }
+        })
+      ]);
+    } catch {
+      await context.env.MEDIA.delete(objectKey);
+      return context.json(error("INVALID_INPUT", "Upload length does not match Content-Length"), 400);
+    }
+    if (receivedBytes !== declaredLength) {
+      await context.env.MEDIA.delete(objectKey);
+      return context.json(error("INVALID_INPUT", "Upload length does not match Content-Length"), 400);
+    }
     try {
       await repository.saveAsset({
         id: assetId, taskId: task.id, companyId: user.companyId,
-        kind: file.type.startsWith("image/") ? "product_image" : "source_video",
-        objectKey, originalFilename: normalizeFilename(file.name), mimeType: file.type,
-        sizeBytes: file.size, origin: "user_upload", metadata: {}, createdAt: Date.now()
+        kind: mimeType.startsWith("image/") ? "product_image" : "source_video",
+        objectKey, originalFilename: normalizeFilename(decodeFilename(filename)), mimeType,
+        sizeBytes: declaredLength, origin: "user_upload", metadata: {}, createdAt: Date.now()
       });
       if (task.status === "draft" || task.status === "needs_material") {
         await repository.updateTaskStatus(task.id, user.id, "uploaded", Date.now());

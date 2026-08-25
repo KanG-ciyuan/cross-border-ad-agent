@@ -207,6 +207,19 @@ export class TaskRepository {
     return result.meta.changes === 1;
   }
 
+  async transitionTaskStatus(
+    taskId: string,
+    userId: string,
+    expectedStatus: string,
+    nextStatus: string,
+    updatedAt: number
+  ): Promise<boolean> {
+    const result = await this.db.prepare(
+      "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = ?"
+    ).bind(nextStatus, updatedAt, taskId, userId, expectedStatus).run();
+    return result.meta.changes === 1;
+  }
+
   async updateTaskDraft(
     taskId: string,
     userId: string,
@@ -337,6 +350,114 @@ export class TaskRepository {
       .run();
   }
 
+  async saveApprovalWithIdempotency(input: {
+    id: string;
+    taskId: string;
+    userId: string;
+    companyId: string;
+    key: string;
+    kind: string;
+    decision: "approved" | "rejected";
+    note?: string;
+    snapshot: unknown;
+    createdAt: number;
+  }): Promise<{ approval: { id: string; taskId: string; userId: string; kind: string; decision: "approved" | "rejected"; note?: string | null; snapshot: unknown; createdAt: number }; created: boolean }> {
+    const approval = {
+      id: input.id,
+      taskId: input.taskId,
+      userId: input.userId,
+      kind: input.kind,
+      decision: input.decision,
+      note: input.note,
+      snapshot: input.snapshot,
+      createdAt: input.createdAt
+    };
+    const approvalStatement = this.db.prepare(
+      `INSERT INTO approvals (id, task_id, user_id, kind, decision, note, snapshot_json, created_at)
+       SELECT ?, t.id, ?, ?, ?, ?, ?, ? FROM tasks t WHERE t.id = ? AND t.user_id = ?`
+    ).bind(input.id, input.userId, input.kind, input.decision, input.note ?? null,
+      JSON.stringify(input.snapshot), input.createdAt, input.taskId, input.userId);
+    const keyStatement = this.db.prepare(
+      `INSERT INTO idempotency_keys (company_id, key, user_id, task_id, operation, attempt_id, response_json, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`
+    ).bind(input.companyId, input.key, input.userId, input.taskId, "approval",
+      JSON.stringify({ approvalId: input.id }), input.createdAt, input.createdAt + 86_400_000);
+    try {
+      await this.db.batch([approvalStatement, keyStatement]);
+      return { approval, created: true };
+    } catch {
+      const existing = await this.db.prepare(
+        `SELECT response_json FROM idempotency_keys WHERE company_id = ? AND key = ? AND user_id = ? AND task_id = ? AND operation = 'approval'`
+      ).bind(input.companyId, input.key, input.userId, input.taskId).first<{ response_json: string | null }>();
+      if (!existing?.response_json) throw new Error("APPROVAL_IDEMPOTENCY_CONFLICT");
+      const approvalId = parseJson<{ approvalId: string }>(existing.response_json).approvalId;
+      const row = await this.db.prepare(
+        `SELECT id, task_id, user_id, kind, decision, note, snapshot_json, created_at FROM approvals WHERE id = ?`
+      ).bind(approvalId).first<ApprovalRow>();
+      if (!row) throw new Error("APPROVAL_IDEMPOTENCY_MISSING");
+      return { approval: { id: row.id, taskId: row.task_id, userId: row.user_id, kind: row.kind,
+        decision: row.decision, note: row.note, snapshot: parseJson<unknown>(row.snapshot_json), createdAt: row.created_at }, created: false };
+    }
+  }
+
+  async getApprovalForIdempotency(input: {
+    companyId: string;
+    key: string;
+    userId: string;
+    taskId: string;
+  }) {
+    const row = await this.db.prepare(
+      `SELECT a.id, a.task_id, a.user_id, a.kind, a.decision, a.note, a.snapshot_json, a.created_at
+       FROM idempotency_keys k
+       INNER JOIN approvals a ON a.id = json_extract(k.response_json, '$.approvalId')
+       WHERE k.company_id = ? AND k.key = ? AND k.user_id = ? AND k.task_id = ? AND k.operation = 'approval'`
+    ).bind(input.companyId, input.key, input.userId, input.taskId).first<ApprovalRow>();
+    return row ? { id: row.id, taskId: row.task_id, userId: row.user_id, kind: row.kind,
+      decision: row.decision, note: row.note, snapshot: parseJson<unknown>(row.snapshot_json), createdAt: row.created_at } : null;
+  }
+
+  async approveReviewTransition(input: {
+    id: string;
+    taskId: string;
+    userId: string;
+    companyId: string;
+    key: string;
+    kind: "content" | "final";
+    action: "approve_content" | "approve_final";
+    expectedStatus: string;
+    nextStatus: string;
+    createdAt: number;
+  }) {
+    const existing = await this.getApprovalForIdempotency(input);
+    if (existing) return { approval: existing, created: false };
+    const snapshot = { statusBefore: input.expectedStatus, statusAfter: input.nextStatus, action: input.action };
+    const approvalStatement = this.db.prepare(
+      `INSERT INTO approvals (id, task_id, user_id, kind, decision, note, snapshot_json, created_at)
+       SELECT ?, t.id, ?, ?, 'approved', NULL, ?, ? FROM tasks t
+       WHERE t.id = ? AND t.user_id = ? AND t.company_id = ? AND t.status = ?`
+    ).bind(input.id, input.userId, input.kind, JSON.stringify(snapshot), input.createdAt,
+      input.taskId, input.userId, input.companyId, input.expectedStatus);
+    const keyStatement = this.db.prepare(
+      `INSERT INTO idempotency_keys (company_id, key, user_id, task_id, operation, attempt_id, response_json, created_at, expires_at)
+       SELECT ?, ?, ?, ?, 'approval', NULL, ?, ?, ? FROM approvals WHERE id = ?`
+    ).bind(input.companyId, input.key, input.userId, input.taskId,
+      JSON.stringify({ approvalId: input.id }), input.createdAt, input.createdAt + 86_400_000, input.id);
+    const transitionStatement = this.db.prepare(
+      `UPDATE tasks SET status = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = ? AND EXISTS (SELECT 1 FROM approvals WHERE id = ?)`
+    ).bind(input.nextStatus, input.createdAt, input.taskId, input.userId, input.expectedStatus, input.id);
+    try {
+      await this.db.batch([approvalStatement, keyStatement, transitionStatement]);
+    } catch {
+      const winner = await this.getApprovalForIdempotency(input);
+      if (winner) return { approval: winner, created: false };
+      throw new Error("REVIEW_TRANSITION_CONFLICT");
+    }
+    const approval = await this.getApprovalForIdempotency(input);
+    if (!approval) throw new Error("REVIEW_TRANSITION_CONFLICT");
+    return { approval, created: true };
+  }
+
   async getLatestApproval(taskId: string, userId: string, kind: string) {
     const row = await this.db
       .prepare(
@@ -380,12 +501,15 @@ export class TaskRepository {
       createdAt: number;
     };
     expiresAt: number;
+    expectedStatus?: string;
+    nextStatus?: string;
   }): Promise<{ reserved: boolean; attemptId: string }> {
-    const existing = await this.findAttemptForIdempotencyKey(
-      input.companyId,
-      input.idempotencyKey
-    );
-    if (existing) return { reserved: false, attemptId: existing };
+    const existing = await this.findIdempotencyKey(input.companyId, input.idempotencyKey);
+    if (existing) {
+      if (existing.userId !== input.userId || existing.taskId !== input.taskId ||
+        existing.operation !== input.operation || !existing.attemptId) throw new Error("IDEMPOTENCY_SCOPE_CONFLICT");
+      return { reserved: false, attemptId: existing.attemptId };
+    }
 
     const attemptStatement = this.db
       .prepare(
@@ -393,7 +517,8 @@ export class TaskRepository {
           id, task_id, step, attempt_number, status, provider, request_json,
           created_at, updated_at
         ) SELECT ?, t.id, ?, ?, ?, ?, ?, ?, ?
-          FROM tasks t WHERE t.id = ? AND t.user_id = ? AND t.company_id = ?`
+          FROM tasks t WHERE t.id = ? AND t.user_id = ? AND t.company_id = ?
+          AND (? IS NULL OR t.status = ?)`
       )
       .bind(
         input.attempt.id,
@@ -406,7 +531,9 @@ export class TaskRepository {
         input.attempt.createdAt,
         input.taskId,
         input.userId,
-        input.companyId
+        input.companyId,
+        input.expectedStatus ?? null,
+        input.expectedStatus ?? null
       );
     const keyStatement = this.db
       .prepare(
@@ -425,25 +552,51 @@ export class TaskRepository {
         input.expiresAt
       );
 
+    const statements = [attemptStatement, keyStatement];
+    if (input.expectedStatus && input.nextStatus) {
+      statements.push(this.db.prepare(
+        `UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = ?
+         AND EXISTS (SELECT 1 FROM step_attempts WHERE id = ?)`
+      ).bind(input.nextStatus, input.attempt.createdAt, input.taskId, input.userId,
+        input.expectedStatus, input.attempt.id));
+    }
     try {
-      await this.db.batch([attemptStatement, keyStatement]);
-      return { reserved: true, attemptId: input.attempt.id };
+      await this.db.batch(statements);
+      const winner = await this.findIdempotencyKey(input.companyId, input.idempotencyKey);
+      if (!winner?.attemptId || winner.userId !== input.userId || winner.taskId !== input.taskId || winner.operation !== input.operation) {
+        throw new Error("ATTEMPT_STATE_CONFLICT");
+      }
+      return { reserved: winner.attemptId === input.attempt.id, attemptId: winner.attemptId };
     } catch (error) {
-      const winner = await this.findAttemptForIdempotencyKey(
-        input.companyId,
-        input.idempotencyKey
-      );
-      if (winner) return { reserved: false, attemptId: winner };
+      const winner = await this.findIdempotencyKey(input.companyId, input.idempotencyKey);
+      if (winner?.attemptId && winner.userId === input.userId && winner.taskId === input.taskId && winner.operation === input.operation) {
+        return { reserved: false, attemptId: winner.attemptId };
+      }
       throw error;
     }
   }
 
-  private async findAttemptForIdempotencyKey(companyId: string, key: string) {
+  private async findIdempotencyKey(companyId: string, key: string) {
     const row = await this.db
       .prepare(
-        "SELECT attempt_id FROM idempotency_keys WHERE company_id = ? AND key = ?"
+        "SELECT user_id, task_id, operation, attempt_id FROM idempotency_keys WHERE company_id = ? AND key = ?"
       )
       .bind(companyId, key)
+      .first<{ user_id: string; task_id: string; operation: string; attempt_id: string | null }>();
+    return row ? { userId: row.user_id, taskId: row.task_id, operation: row.operation, attemptId: row.attempt_id } : null;
+  }
+
+  async getAttemptForIdempotency(input: {
+    companyId: string;
+    key: string;
+    userId: string;
+    taskId: string;
+    operation: string;
+  }) {
+    const row = await this.db.prepare(
+      `SELECT attempt_id FROM idempotency_keys
+       WHERE company_id = ? AND key = ? AND user_id = ? AND task_id = ? AND operation = ?`
+    ).bind(input.companyId, input.key, input.userId, input.taskId, input.operation)
       .first<{ attempt_id: string | null }>();
     return row?.attempt_id ?? null;
   }

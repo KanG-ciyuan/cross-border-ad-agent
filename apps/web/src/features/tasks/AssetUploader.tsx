@@ -2,10 +2,10 @@ import { CircleCheck, RotateCcw, Upload, X } from "lucide-react";
 import { useRef } from "react";
 
 const DEFAULT_TYPES = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"];
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export function getFileSelectionError(file: File, allowedTypes = DEFAULT_TYPES) {
-  if (file.size > MAX_FILE_BYTES) return "文件超过 100 MB";
+  if (file.size > MAX_FILE_BYTES) return "文件超过 25 MB";
   if (!allowedTypes.includes(file.type)) return "文件类型不支持";
   return undefined;
 }

@@ -51,12 +51,11 @@ async function seedTask() {
 }
 
 function uploadRequest(file: File, filename = file.name) {
-  const form = new FormData();
-  form.set("file", file, filename);
   return new Request(`${origin}/api/tasks/tsk_upload01/assets`, {
     method: "POST",
-    headers: { Cookie: `ad_session=${token}`, Origin: origin },
-    body: form
+    headers: { Cookie: `ad_session=${token}`, Origin: origin, "Content-Type": file.type,
+      "Content-Length": String(file.size), "X-Filename": encodeURIComponent(filename) },
+    body: file.stream()
   });
 }
 
@@ -81,6 +80,12 @@ describe("asset upload API", () => {
     expect(assets[0]?.originalFilename).toBe("产品 正面_.jpg");
     expect(assets[0]?.objectKey).not.toContain("产品");
     expect(await env.MEDIA.get(assets[0]!.objectKey)).not.toBeNull();
+    const detail = await createApp().fetch(new Request(`${origin}/api/tasks/tsk_upload01`, {
+      headers: { Cookie: `ad_session=${token}` }
+    }), bindings);
+    const detailBody = (await detail.json()) as { assets: Array<Record<string, unknown>> };
+    expect(detailBody.assets[0]).not.toHaveProperty("objectKey");
+    expect(detailBody.assets[0]).not.toHaveProperty("companyId");
   });
 
   it("rejects unsupported MIME types and mismatched media signatures", async () => {
@@ -96,15 +101,16 @@ describe("asset upload API", () => {
     }
   });
 
-  it("rejects requests over the 100 MB per-file limit before buffering", async () => {
+  it("rejects raw requests over the 25 MB streaming-upload limit before reading", async () => {
     const response = await createApp().fetch(
       new Request(`${origin}/api/tasks/tsk_upload01/assets`, {
         method: "POST",
         headers: {
           Cookie: `ad_session=${token}`,
           Origin: origin,
-          "Content-Type": "multipart/form-data; boundary=test",
-          "Content-Length": String(100 * 1024 * 1024 + 1)
+          "Content-Type": "video/mp4",
+          "X-Filename": "large.mp4",
+          "Content-Length": String(25 * 1024 * 1024 + 1)
         },
         body: "--test--"
       }),
@@ -113,5 +119,14 @@ describe("asset upload API", () => {
 
     expect(response.status).toBe(413);
     expect(await response.json()).toMatchObject({ error: { code: "FILE_TOO_LARGE" } });
+  });
+
+  it("rejects raw uploads without a declared total length", async () => {
+    const response = await createApp().fetch(new Request(`${origin}/api/tasks/tsk_upload01/assets`, {
+      method: "POST", headers: { Cookie: `ad_session=${token}`, Origin: origin,
+        "Content-Type": "image/jpeg", "X-Filename": "front.jpg" },
+      body: new Uint8Array([0xff, 0xd8, 0xff])
+    }), bindings);
+    expect(response.status).toBe(411);
   });
 });
