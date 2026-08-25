@@ -51,15 +51,17 @@
 ## 本地验证
 
 ```bash
+pnpm build
 pnpm --filter @ad-agent/api exec wrangler deploy --dry-run
 pnpm --filter @ad-agent/api exec wrangler deploy --dry-run --env preview
 pnpm typecheck
 pnpm test
-pnpm build
 pnpm test:e2e
 ```
 
-`--dry-run` 只执行本地打包和配置检查，不上传 Worker。preview 尚未创建时，配置中不会有 `database_id`；这是预期的未就绪状态，不得为了让部署命令通过而填入来源不明的 ID。
+`--dry-run` 只执行本地打包和配置检查，不上传 Worker。必须先执行 `pnpm build`，以生成 `apps/web/dist`；Wrangler 会从该目录提供 SPA 静态资源，未命中资源的页面路由回退到 `index.html`，`/api/*` 则优先进入 Worker。
+
+仓库中的 preview `database_id` 固定为 `preview-d1-id-requires-fresh-approval`，它是不对应任何云端资源的审批哨兵，使任何真实 UUID（包括误填生产 ID）都无法通过仓库配置测试。Worker 运行时只能比对 `wrangler.jsonc` 中的声明名称，**无法从 D1/R2 binding 内省得到云端资源 ID 或证明真实资源隔离**。真实身份必须在部署前通过 Cloudflare 查询另行核对。
 
 ## 创建 Preview 资源
 
@@ -71,7 +73,7 @@ pnpm test:e2e
 pnpm --filter @ad-agent/api exec wrangler d1 create cross-border-ad-agent-preview-db
 ```
 
-记录返回的 preview D1 `database_id`，将它填入 `wrangler.jsonc` 的 `env.preview.d1_databases[0].database_id`。不要填写 `account_id`，不要使用任何生产数据库 ID。
+记录创建命令返回的 preview D1 `database_id`，但先不要写入配置。不要填写 `account_id`，不要使用任何旧 ID 或生产数据库 ID。
 
 **REQUIRES FRESH APPROVAL immediately before execution**
 
@@ -81,7 +83,27 @@ pnpm --filter @ad-agent/api exec wrangler r2 bucket create cross-border-ad-agent
 
 ## Preview 迁移、Secret 和部署
 
-先确认 `APP_ENV=preview`，D1 和 R2 名称都含 `preview` 且不含 `prod`/`production`。先运行上一节的两个 `--dry-run` 命令。
+先确认 `APP_ENV=preview`，D1 和 R2 声明名称都含 `preview` 且不含 `prod`/`production`。名称相同不足以证明资源身份：必须用创建命令当次返回的 ID 做远程只读查询，并由操作人确认返回名称**精确等于** `cross-border-ad-agent-preview-db`。
+
+**REQUIRES FRESH APPROVAL immediately before execution**
+
+```bash
+pnpm --filter @ad-agent/api exec wrangler d1 info <NEW_PREVIEW_D1_ID>
+```
+
+查询结果必须同时显示该 ID 与名称 `cross-border-ad-agent-preview-db`。不得仅依赖配置中的 `database_name`。
+
+**REQUIRES FRESH APPROVAL immediately before execution**
+
+```bash
+pnpm --filter @ad-agent/api exec wrangler r2 bucket info cross-border-ad-agent-preview-media --json
+```
+
+确认当前 Cloudflare 账户正确，且返回的 bucket 名称精确等于 `cross-border-ad-agent-preview-media`。
+
+**REQUIRES FRESH APPROVAL immediately before replacing the preview D1 sentinel**
+
+只有 D1 ID 来自本次已批准的创建命令，且 D1/R2 查询都完全匹配时，才能在当次审批窗口内将 `wrangler.jsonc` 的哨兵值临时替换为该 D1 ID。替换后先执行 `pnpm build` 和上一节的 preview `--dry-run`，再继续迁移和部署。因为仓库测试会拒绝任何真实 ID，该临时变更不得提交，操作完成后必须恢复哨兵值并重跑测试。
 
 **REQUIRES FRESH APPROVAL immediately before execution**
 
@@ -137,4 +159,4 @@ pnpm --filter @ad-agent/api exec wrangler r2 bucket delete cross-border-ad-agent
 pnpm --filter @ad-agent/api exec wrangler d1 delete cross-border-ad-agent-preview-db
 ```
 
-清理后删除本地 `wrangler.jsonc` 中的 preview `database_id`，再次执行本地测试与 `--dry-run`。不得把旧 ID 改为任何生产 ID。
+清理后将本地 `wrangler.jsonc` 中的 preview `database_id` 恢复为 `preview-d1-id-requires-fresh-approval`，再次执行本地测试与 `--dry-run`。不得把旧 ID 改为任何生产 ID。
