@@ -17,9 +17,28 @@ async function expectNoRootOverflow(page: Page) {
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
 }
 
+async function loginThroughUi(page: Page) {
+  await page.route("**/api/auth/login", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  await page.goto("/tasks/new");
+  await expect(page.getByRole("heading", { name: "公司成员登录" })).toBeVisible();
+  await page.getByLabel("授权邮箱").fill("qa@company.test");
+  await page.getByLabel("密码").fill("not-a-real-password");
+  const loginRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/auth/login"
+  );
+  await page.getByRole("button", { name: "登录" }).click();
+  expect((await loginRequest).postDataJSON()).toEqual({
+    email: "qa@company.test",
+    password: "not-a-real-password"
+  });
+}
+
 test("complete creation reaches a costed final version", async ({ page }, testInfo: TestInfo) => {
   const consoleErrors = collectConsoleErrors(page);
-  await page.goto("/tasks/new?demo=1");
+  await loginThroughUi(page);
   await expect(page).toHaveTitle(/AdFlow/);
   await expect(page.getByRole("heading", { name: "新建产品广告" })).toBeVisible();
   await expectNoRootOverflow(page);

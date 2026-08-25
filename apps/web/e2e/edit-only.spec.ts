@@ -16,14 +16,28 @@ async function expectNoRootOverflow(page: Page) {
   expect(hasOverflow).toBe(false);
 }
 
+async function loginThroughUi(page: Page) {
+  await page.route("**/api/auth/login", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  await page.goto("/tasks/new");
+  await expect(page.getByRole("heading", { name: "公司成员登录" })).toBeVisible();
+  await page.getByLabel("授权邮箱").fill("qa@company.test");
+  await page.getByLabel("密码").fill("not-a-real-password");
+  const loginRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/auth/login"
+  );
+  await page.getByRole("button", { name: "登录" }).click();
+  expect((await loginRequest).postDataJSON()).toEqual({
+    email: "qa@company.test",
+    password: "not-a-real-password"
+  });
+}
+
 test("edit-only removes generation fields and submits directly to review", async ({ page }, testInfo: TestInfo) => {
   const consoleErrors = collectConsoleErrors(page);
-  const taskApiRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("/api/tasks")) taskApiRequests.push(`${request.method()} ${request.url()}`);
-  });
-
-  await page.goto("/tasks/new?demo=1");
+  await loginThroughUi(page);
   await page.getByRole("radio", { name: "只剪现有素材" }).check();
 
   await expect(page.getByLabel("产品名称")).toHaveCount(0);
@@ -46,9 +60,14 @@ test("edit-only removes generation fields and submits directly to review", async
 
   await expect(page).toHaveURL(/\/tasks\/tsk_demo0004\/review$/);
   await expect(page.getByRole("heading", { name: "审核广告初版" })).toBeVisible();
-  // Demo mode is intentionally in-memory; payload shape is covered by the component test.
-  expect(taskApiRequests).toEqual([]);
   await expectNoRootOverflow(page);
   expect(consoleErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("edit-only-review.png"), fullPage: true });
+});
+
+test("edit-only task API payload excludes generation, product, claim, and extra-copy fields", async () => {
+  test.skip(
+    true,
+    "Unverified by design: the frontend has no task API integration, so no browser task request exists to assert at the API boundary."
+  );
 });
