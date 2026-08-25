@@ -1,0 +1,3 @@
+export function VersionsPage({ onReview }: { onReview: () => void }) {
+  return <section className="page-section"><header className="page-heading"><div><h1>成品与版本</h1><p>保留每次生成、费用和审核记录，不覆盖旧版本。</p></div></header><div className="table-frame"><table><thead><tr><th>版本</th><th>结果</th><th>变更</th><th>费用</th><th>操作</th></tr></thead><tbody><tr><td>V3</td><td><span className="status-badge status-info">待批准</span></td><td>重做镜头 3，优化字幕</td><td>¥18.40</td><td><button className="text-button" onClick={onReview}>审核</button></td></tr><tr><td>V2</td><td><span className="status-badge">历史版本</span></td><td>产品包装一致性修正</td><td>¥13.10</td><td><button className="text-button">预览</button></td></tr></tbody></table></div></section>;
+}
