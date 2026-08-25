@@ -1,0 +1,51 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cross-border-ad-agent-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-20",
+
+  // Secret binding name only. Supply SESSION_PEPPER through .dev.vars locally
+  // and `wrangler secret put SESSION_PEPPER --env preview` for preview.
+  "vars": {
+    "APP_ENV": "local",
+    "D1_DATABASE_NAME": "cross-border-ad-agent-local-db",
+    "R2_BUCKET_NAME": "cross-border-ad-agent-local-media"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cross-border-ad-agent-local-db",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "cross-border-ad-agent-local-media"
+    }
+  ],
+
+  "env": {
+    "preview": {
+      "name": "cross-border-ad-agent-preview",
+      "vars": {
+        "APP_ENV": "preview",
+        "D1_DATABASE_NAME": "cross-border-ad-agent-preview-db",
+        "R2_BUCKET_NAME": "cross-border-ad-agent-preview-media"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "cross-border-ad-agent-preview-db",
+          "migrations_dir": "../../migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "cross-border-ad-agent-preview-media"
+        }
+      ]
+    }
+  }
+}

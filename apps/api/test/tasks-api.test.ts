@@ -11,7 +11,9 @@ const bindings = {
   DB: env.DB,
   MEDIA: env.MEDIA,
   APP_ENV: "test" as const,
-  SESSION_PEPPER: "test-only-pepper"
+  SESSION_PEPPER: "test-only-pepper",
+  D1_DATABASE_NAME: "ad-agent-test-db",
+  R2_BUCKET_NAME: "ad-agent-test-media"
 };
 
 async function seedIdentity(suffix = "owner") {

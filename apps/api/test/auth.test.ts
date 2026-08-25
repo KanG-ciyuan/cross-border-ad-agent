@@ -9,7 +9,9 @@ const testEnv = {
   DB: env.DB,
   MEDIA: {} as R2Bucket,
   APP_ENV: "production" as const,
-  SESSION_PEPPER: "test-only-pepper-not-a-real-secret"
+  SESSION_PEPPER: "test-only-pepper-not-a-real-secret",
+  D1_DATABASE_NAME: "ad-agent-production-db",
+  R2_BUCKET_NAME: "ad-agent-production-media"
 };
 const password = "Test-only-password-42";
 
