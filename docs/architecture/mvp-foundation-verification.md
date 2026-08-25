@@ -1,6 +1,6 @@
 # MVP Foundation Verification
 
-Date: 2026-08-25
+Date: 2026-08-26
 
 This report covers local acceptance only. It is not evidence of production readiness or a Cloudflare deployment.
 
@@ -17,10 +17,15 @@ This report covers local acceptance only. It is not evidence of production readi
 - The server-only Seedance 2.5 adapter builds official Volcano Ark create requests and normalizes task-query responses. Tests cover request shape, TikTok `9:16` defaults, HTTPS reference validation, response validation, and secret-safe provider errors using injected fake HTTP responses.
 - The server-only MiniMax H3 adapter builds the official V2 multimodal request and normalizes task-query responses. Tests cover `9:16` and `768P` defaults, official duration/reference limits, insufficient balance, provider failures, and secret-safe errors using injected fake HTTP responses.
 - A shared provider factory selects MiniMax by default and can switch to Seedance through `VIDEO_GENERATION_PROVIDER`. Authenticated integration status reports provider configuration without returning `MINIMAX_API_KEY`, `ARK_API_KEY`, or other secret material. The existing local fake-provider workflow remains available when keys are absent.
+- Edit-only tasks can send uploaded MP4 or QuickTime assets to the local FFmpeg renderer, persist the returned MP4 in local R2, and record its derived asset ID on an immutable version. A failed render remains retryable from the progress page.
+- The real browser flow was exercised with two uploaded MP4 clips: create task, upload, deterministic analysis, start automatic editing, preview the rendered video on the review page, open the version page, and trigger its download link.
+- The end-to-end output stored in local R2 was verified with FFprobe as H.264 video plus AAC audio, `1080x1920`, `30 fps`, `3.76` seconds, and `104691` bytes. The review and version pages rendered the authenticated MP4 without console errors in a fresh browser tab.
+- Local FFmpeg `8.1.1` does not include `drawtext`. The renderer therefore creates portable PPM bitmap overlays in Node and uses FFmpeg `overlay`, while transitions use `xfade` and `acrossfade`. This first overlay implementation supports basic ASCII Indonesian and English copy; its typography is intentionally a baseline, not final campaign styling.
+- The Worker-to-renderer integration preserves stable, secret-safe failure codes. Browser verification exposed and fixed a Cloudflare native `fetch` receiver error, and also verified that `failed_retryable` edit-only tasks expose the automatic-editing action again.
 
 ## Simulated boundaries
 
-- Analysis and rendering use deterministic fake providers. The render receipt is structured test data, not a playable video file.
+- Analysis remains deterministic and simulated. Rendering remains simulated when `RENDERER_BASE_URL` is absent; when it is configured, edit-only rendering produces a playable MP4 through the local FFmpeg service.
 - Demo browser flows use `?demo=1` and sample data so UI behavior can be verified without a local company account.
 - The review player, generated reference images, storyboard visuals, Indonesian copy, and retry-shot action remain illustrative UI. They are not outputs from Seedance or a real renderer.
 
@@ -46,7 +51,9 @@ This report covers local acceptance only. It is not evidence of production readi
 
 - Cross-device persistence through a deployed Cloudflare Worker, remote D1, and remote R2 is unverified. No Cloudflare resource was created or changed and no deployment was performed.
 - Existing tasks created before migration `0002_task_input.sql` contain no reconstructable product facts. They must be recreated before analysis; the migration deliberately does not invent product claims or compliance data.
-- Live MiniMax/Seedance execution and output persistence, TTS, real image generation, Remotion/FFmpeg rendering, Jianying automation, TikTok publishing, and provider concurrency are not verified.
+- Live MiniMax/Seedance execution and output persistence, TTS, real image generation, Remotion rendering, Jianying automation, TikTok publishing, and provider concurrency are not verified.
+- Real FFmpeg rendering is verified only on the current local machine. Cloudflare Workers remain the request/orchestration layer; a remotely deployed renderer or Cloudflare Container has not been provisioned or verified.
+- The bitmap subtitle renderer currently strips non-ASCII characters and uses a fixed 5x7 font. Campaign-quality Indonesian typography, brand fonts, word wrapping, animated stickers, music, voiceover, and intelligent shot selection remain future work.
 - No credentials were read, displayed, moved, replaced, or committed.
 
 ## Commands
@@ -59,6 +66,7 @@ pnpm test
 pnpm build
 pnpm test:e2e
 git diff --check
+ffprobe -v error -show_entries stream=index,codec_name,codec_type,width,height,r_frame_rate -show_entries format=duration,size,format_name -of json /tmp/adflow-e2e-output.mp4
 ```
 
 Playwright starts an isolated Vite server at `http://127.0.0.1:4187`. Test screenshots and traces are generated under ignored Playwright output directories.

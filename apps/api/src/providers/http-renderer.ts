@@ -58,7 +58,7 @@ export class HttpRenderProvider {
     }));
     let response: Response;
     try {
-      response = await this.fetcher(`${this.baseUrl}/render`, { method: "POST", body: form });
+      response = await this.fetcher.call(globalThis, `${this.baseUrl}/render`, { method: "POST", body: form });
     } catch {
       throw new HttpRendererError("RENDERER_UNAVAILABLE");
     }

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { AppRouter, canUseDemoBypass, loginErrorMessage, resolveVersionsTaskId } from "./router";
+import { AppRouter, canRenderEditTask, canUseDemoBypass, loginErrorMessage, renderActionLabel, resolveVersionsTaskId } from "./router";
 
 describe("AppRouter", () => {
   it("allows the public demo query only in Vite development", () => {
@@ -20,6 +20,17 @@ describe("AppRouter", () => {
     expect(resolveVersionsTaskId([], false)).toBeNull();
     expect(resolveVersionsTaskId([{ id: "tsk_real0001", status: "approved" }], false)).toBe("tsk_real0001");
     expect(resolveVersionsTaskId([], true)).toBe("tsk_demo0002");
+  });
+
+  it("names the real FFmpeg action as automatic editing", () => {
+    expect(renderActionLabel(false)).toBe("开始自动剪辑");
+    expect(renderActionLabel(true)).toBe("开始模拟剪辑");
+  });
+
+  it("lets a failed edit-only render retry from the progress page", () => {
+    expect(canRenderEditTask("edit_only", "failed_retryable")).toBe(true);
+    expect(canRenderEditTask("edit_only", "ready_to_render")).toBe(true);
+    expect(canRenderEditTask("complete_creation", "failed_retryable")).toBe(false);
   });
 
   it("opens the matching task review after generation approval", async () => {

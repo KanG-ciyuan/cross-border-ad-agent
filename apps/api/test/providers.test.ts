@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeAnalysisProvider } from "../src/providers/fake-analysis";
 import { FakeRenderProvider, hashEditPlan } from "../src/providers/fake-renderer";
+import { HttpRenderProvider } from "../src/providers/http-renderer";
 
 const completeInput = {
   taskId: "tsk_fixture01",
@@ -97,5 +98,45 @@ describe("FakeRenderProvider", () => {
     const changed = structuredClone(analysis.editPlan);
     changed.cost.estimatedFen += 1;
     expect(await hashEditPlan(changed)).not.toBe(receipt.planHash);
+  });
+});
+
+describe("HttpRenderProvider", () => {
+  it("invokes the Cloudflare fetch implementation with the global receiver", async () => {
+    const analysis = await new FakeAnalysisProvider().analyze({
+      taskId: "tsk_editonly1",
+      goal: "edit_only",
+      market: "ID",
+      platform: "tiktok",
+      assets: [{ id: "ast_video001", kind: "source_video" }],
+      allowedOperations: ["trim"],
+      referenceGeneration: [],
+      costLimitFen: 5_000
+    });
+    const receiverSensitiveFetch = async function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return new Response(new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112]), {
+        headers: { "Content-Type": "video/mp4" }
+      });
+    } as typeof fetch;
+
+    const result = await new HttpRenderProvider({
+      baseUrl: "http://127.0.0.1:8790",
+      fetch: receiverSensitiveFetch
+    }).render({
+      plan: analysis.editPlan,
+      outputAssetId: "ast_output001",
+      title: "KLIN",
+      caption: "Bersihkan minyak",
+      cta: "",
+      sources: [{
+        assetId: "ast_video001",
+        mimeType: "video/mp4",
+        filename: "source.mp4",
+        bytes: new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112]).buffer
+      }]
+    });
+
+    expect(result.bytes.byteLength).toBe(8);
   });
 });

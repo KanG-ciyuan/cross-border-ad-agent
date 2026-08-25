@@ -4,6 +4,7 @@ import {
   normalizeClipWindow,
   requireSupportedVideoType
 } from "../src/ffmpeg-renderer";
+import { renderTextPpm } from "../src/bitmap-text";
 
 describe("FFmpeg renderer", () => {
   it("accepts uploaded MP4 and QuickTime videos only", () => {
@@ -30,17 +31,23 @@ describe("FFmpeg renderer", () => {
       width: 1080,
       height: 1920,
       fps: 30,
-      titleFile: "/tmp/title.txt",
-      captionFile: "/tmp/caption.txt",
-      ctaFile: "/tmp/cta.txt",
-      fontFile: "/System/Library/Fonts/Supplemental/Arial.ttf"
+      titleOverlay: "/tmp/title.ppm",
+      captionOverlay: "/tmp/caption.ppm",
+      ctaOverlay: "/tmp/cta.ppm"
     });
 
     expect(args).toContain("libx264");
     expect(args).toContain("aac");
     expect(args).toContain("1080:1920");
     expect(args.join(" ")).toContain("xfade=transition=fade");
-    expect(args.join(" ")).toContain("textfile='/tmp/caption.txt'");
+    expect(args.join(" ")).toContain("overlay=x=(W-w)/2:y=80");
+    expect(args).toContain("/tmp/caption.ppm");
     expect(args.at(-1)).toBe("/tmp/output.mp4");
+  });
+
+  it("creates a portable PPM text overlay without FFmpeg font filters", () => {
+    const image = renderTextPpm({ text: "KLIN 500ML", width: 320, height: 80, scale: 6 });
+    expect(new TextDecoder().decode(image.slice(0, 15))).toContain("P6\n320 80\n255");
+    expect(image.byteLength).toBeGreaterThan(320 * 80 * 3);
   });
 });

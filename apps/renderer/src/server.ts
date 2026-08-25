@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -11,6 +11,7 @@ import {
   RendererError,
   requireSupportedVideoType
 } from "./ffmpeg-renderer.ts";
+import { renderTextPpm } from "./bitmap-text.ts";
 
 interface RenderManifest {
   output: { width: number; height: number; fps: number };
@@ -42,19 +43,6 @@ function parseManifest(value: FormDataEntryValue | null): RenderManifest {
     }
   }
   return manifest as RenderManifest;
-}
-
-async function fontPath() {
-  const candidates = [
-    process.env.RENDERER_FONT_FILE,
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-  ].filter((value): value is string => Boolean(value));
-  for (const candidate of candidates) {
-    try { await access(candidate); return candidate; } catch { /* try the next known font */ }
-  }
-  throw new RendererError("RENDERER_FONT_MISSING");
 }
 
 async function webRequest(request: IncomingMessage) {
@@ -100,13 +88,13 @@ async function handleRender(request: IncomingMessage) {
       normalizedInputs.push(normalizedPath);
       normalizedDurations.push(window.durationSeconds);
     }
-    const titleFile = join(workspace, "title.txt");
-    const captionFile = join(workspace, "caption.txt");
-    const ctaFile = join(workspace, "cta.txt");
+    const titleOverlay = join(workspace, "title.ppm");
+    const captionOverlay = join(workspace, "caption.ppm");
+    const ctaOverlay = join(workspace, "cta.ppm");
     await Promise.all([
-      writeFile(titleFile, manifest.title.slice(0, 100), "utf8"),
-      writeFile(captionFile, manifest.caption.slice(0, 260), "utf8"),
-      writeFile(ctaFile, manifest.cta.slice(0, 100), "utf8")
+      writeFile(titleOverlay, renderTextPpm({ text: manifest.title, width: 920, height: 120, scale: 8 })),
+      writeFile(captionOverlay, renderTextPpm({ text: manifest.caption, width: 940, height: 210, scale: 6 })),
+      writeFile(ctaOverlay, renderTextPpm({ text: manifest.cta || "LIHAT SEKARANG", width: 820, height: 180, scale: 8, background: [22, 130, 79] }))
     ]);
     const outputPath = join(workspace, "output.mp4");
     await renderFinalVideo({
@@ -114,10 +102,9 @@ async function handleRender(request: IncomingMessage) {
       normalizedDurations,
       outputPath,
       ...manifest.output,
-      titleFile,
-      captionFile,
-      ctaFile,
-      fontFile: await fontPath()
+      titleOverlay,
+      captionOverlay,
+      ctaOverlay
     });
     return await readFile(outputPath);
   } finally {

@@ -5,11 +5,15 @@ import type { Env } from "../env";
 import { getAuthenticatedUser, isSameOrigin } from "../auth/session";
 import { FakeAnalysisProvider } from "../providers/fake-analysis";
 import { FakeRenderProvider } from "../providers/fake-renderer";
-import { HttpRenderProvider } from "../providers/http-renderer";
+import { HttpRenderProvider, HttpRendererError } from "../providers/http-renderer";
 import { TaskRepository, type TaskRecord } from "./repository";
 
 function error(code: string, message: string, retryable = false) {
   return { error: { code, message, retryable } };
+}
+
+export function renderFailureCode(failure: unknown) {
+  return failure instanceof HttpRendererError ? failure.code : "RENDER_FAILED";
 }
 
 async function jsonBody(context: { req: { json(): Promise<unknown> } }) {
@@ -311,9 +315,10 @@ export function createTaskRoutes() {
           editPlan: plan, renderReceipt: receipt,
           outputAssetId: outputObjectKey ? outputAssetId : undefined, createdAt: Date.now() }, updatedAt: Date.now() });
       return context.json({ attemptId: reservation.attemptId }, 202);
-    } catch {
+    } catch (failure) {
+      const failureCode = renderFailureCode(failure);
       await repository.failRenderAttempt({ attemptId: reservation.attemptId, taskId: task.id,
-        userId: access.user.id, errorCode: "RENDER_FAILED", updatedAt: Date.now() });
+        userId: access.user.id, errorCode: failureCode, updatedAt: Date.now() });
       return context.json(error("RENDER_FAILED", "Rendering failed and can be retried", true), 502);
     }
   });

@@ -2,8 +2,11 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 
 export class RendererError extends Error {
-  constructor(public readonly code: string) {
+  public readonly code: string;
+
+  constructor(code: string) {
     super(code);
+    this.code = code;
     this.name = "RendererError";
   }
 }
@@ -94,14 +97,16 @@ export function buildFinalFfmpegArgs(input: {
   width: number;
   height: number;
   fps: number;
-  titleFile: string;
-  captionFile: string;
-  ctaFile: string;
-  fontFile: string;
+  titleOverlay: string;
+  captionOverlay: string;
+  ctaOverlay: string;
 }) {
   if (!input.normalizedInputs.length) throw new RendererError("MATERIAL_REQUIRED");
   const args = ["-y"];
   for (const source of input.normalizedInputs) args.push("-i", source);
+  for (const overlay of [input.titleOverlay, input.captionOverlay, input.ctaOverlay]) {
+    args.push("-loop", "1", "-i", overlay);
+  }
   const durations = input.normalizedDurations ?? input.normalizedInputs.map(() => 3);
   const transitionSeconds = 0.25;
   const filters: string[] = [];
@@ -118,17 +123,18 @@ export function buildFinalFfmpegArgs(input: {
     audioLabel = nextAudio;
     elapsed += (durations[index] ?? 3) - transitionSeconds;
   }
-  const safeFont = input.fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+  const overlayStart = input.normalizedInputs.length;
   filters.push(
-    `[${videoLabel}]drawtext=fontfile='${safeFont}':textfile='${input.titleFile}':fontcolor=white:fontsize=52:box=1:boxcolor=black@0.58:boxborderw=22:x=(w-text_w)/2:y=120,` +
-    `drawtext=fontfile='${safeFont}':textfile='${input.captionFile}':fontcolor=white:fontsize=46:line_spacing=14:box=1:boxcolor=black@0.62:boxborderw=24:x=(w-text_w)/2:y=h-text_h-260,` +
-    `drawtext=fontfile='${safeFont}':textfile='${input.ctaFile}':fontcolor=white:fontsize=58:box=1:boxcolor=0x16824f@0.92:boxborderw=26:x=(w-text_w)/2:y=(h-text_h)/2:enable='gte(t,${Math.max(0, elapsed - 2).toFixed(3)})'[vout]`
+    `[${overlayStart}:v]format=rgba[title];[${overlayStart + 1}:v]format=rgba[caption];[${overlayStart + 2}:v]format=rgba[cta];` +
+    `[${videoLabel}][title]overlay=x=(W-w)/2:y=80[vtitle];` +
+    `[vtitle][caption]overlay=x=(W-w)/2:y=H-h-140[vcaption];` +
+    `[vcaption][cta]overlay=x=(W-w)/2:y=(H-h)/2:enable='gte(t,${Math.max(0, elapsed - 2).toFixed(3)})'[vout]`
   );
   args.push(
     "-filter_complex", filters.join(";"), "-map", "[vout]", "-map", `[${audioLabel}]`,
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "160k", "-r", String(input.fps), "-s", `${input.width}:${input.height}`,
-    "-movflags", "+faststart", input.outputPath
+    "-movflags", "+faststart", "-shortest", input.outputPath
   );
   return args;
 }

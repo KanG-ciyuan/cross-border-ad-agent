@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashSessionToken } from "../src/auth/password";
 import { AuthRepository } from "../src/auth/repository";
 import { FakeRenderProvider } from "../src/providers/fake-renderer";
+import { HttpRendererError } from "../src/providers/http-renderer";
+import { renderFailureCode } from "../src/tasks/routes";
 import { TaskRepository } from "../src/tasks/repository";
 import { createApp } from "../src/index";
 
@@ -75,6 +77,11 @@ describe("task API", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     return seedIdentity();
+  });
+
+  it("keeps renderer diagnostics stable and secret-safe", () => {
+    expect(renderFailureCode(new HttpRendererError("RENDERER_UNAVAILABLE"))).toBe("RENDERER_UNAVAILABLE");
+    expect(renderFailureCode(new Error("request included private details"))).toBe("RENDER_FAILED");
   });
 
   it("creates complete-creation and edit-only tasks as separate payload shapes", async () => {

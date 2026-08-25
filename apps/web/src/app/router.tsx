@@ -28,6 +28,14 @@ export function resolveVersionsTaskId(
   return tasks.find((task) => ["pending_content_review", "pending_final_approval", "approved"].includes(task.status))?.id ?? null;
 }
 
+export function renderActionLabel(simulation: boolean) {
+  return simulation ? "开始模拟剪辑" : "开始自动剪辑";
+}
+
+export function canRenderEditTask(goal: TaskListItem["goal"], status: string) {
+  return goal === "edit_only" && ["ready_to_render", "failed_retryable"].includes(status);
+}
+
 function VersionsLanding({ tasks, simulation }: { tasks: TaskListItem[]; simulation: boolean }) {
   const navigate = useNavigate();
   const taskId = resolveVersionsTaskId(tasks, simulation);
@@ -126,8 +134,8 @@ function ProgressRoute({ tasks, simulation, onRefresh }: { tasks: TaskListItem[]
   const { taskId } = useParams();
   const task = tasks.find((item) => item.id === taskId);
   if (!task) return <section className="page-section"><div className="state-panel"><h2>未找到任务</h2><button className="button" onClick={() => navigate("/tasks")}>返回任务列表</button></div></section>;
-  const canRender = task.goal === "edit_only" && task.status === "ready_to_render";
-  return <section className="page-section"><header className="page-heading"><div><h1>{task.name}</h1><p>{task.mode} · 本地 API 任务</p></div><button className="button" onClick={() => navigate("/tasks")}>返回任务列表</button></header><section className="surface"><h2>当前处理状态</h2><p>任务已写入本地 D1，素材已写入本地 R2。当前状态：{task.status}</p>{canRender ? <button className="button primary" onClick={async () => { if (!simulation && taskId) await renderTask(taskId); await onRefresh(); navigate(`/tasks/${taskId}/review`); }}>开始模拟剪辑</button> : <button className="button" onClick={() => void onRefresh()}>刷新状态</button>}</section></section>;
+  const canRender = canRenderEditTask(task.goal, task.status);
+  return <section className="page-section"><header className="page-heading"><div><h1>{task.name}</h1><p>{task.mode} · 本地 API 任务</p></div><button className="button" onClick={() => navigate("/tasks")}>返回任务列表</button></header><section className="surface"><h2>当前处理状态</h2><p>任务已写入本地 D1，素材已写入本地 R2。当前状态：{task.status}</p>{canRender ? <button className="button primary" onClick={async () => { if (!simulation && taskId) await renderTask(taskId); await onRefresh(); navigate(`/tasks/${taskId}/review`); }}>{renderActionLabel(simulation)}</button> : <button className="button" onClick={() => void onRefresh()}>刷新状态</button>}</section></section>;
 }
 
 function ReviewRoute({ simulation }: { simulation: boolean }) {
