@@ -46,11 +46,12 @@ export function createUploadRoutes() {
     const object = await context.env.MEDIA.get(asset.objectKey);
     if (!object) return context.json(error("NOT_FOUND", "Rendered video not found"), 404);
     const fallback = asset.originalFilename.replace(/[^A-Za-z0-9._-]/g, "_");
+    const disposition = context.req.query("download") === "1" ? "attachment" : "inline";
     return new Response(object.body, {
       headers: {
         "Content-Type": asset.mimeType,
         "Content-Length": String(asset.sizeBytes),
-        "Content-Disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(asset.originalFilename)}`,
+        "Content-Disposition": `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(asset.originalFilename)}`,
         "Cache-Control": "private, no-store"
       }
     });

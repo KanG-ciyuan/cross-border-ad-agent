@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { AppRouter, canUseDemoBypass, loginErrorMessage } from "./router";
+import { AppRouter, canUseDemoBypass, loginErrorMessage, resolveVersionsTaskId } from "./router";
 
 describe("AppRouter", () => {
   it("allows the public demo query only in Vite development", () => {
@@ -14,6 +14,12 @@ describe("AppRouter", () => {
     expect(loginErrorMessage(new Error("CROSS_ORIGIN_REQUEST"))).toBe("本地连接配置异常，请刷新后重试");
     expect(loginErrorMessage(new Error("INVALID_CREDENTIALS"))).toBe("邮箱或密码不正确");
     expect(loginErrorMessage(new Error("请求失败"))).toBe("登录失败，请稍后重试");
+  });
+
+  it("does not route the real versions entry to a fixed demo task", () => {
+    expect(resolveVersionsTaskId([], false)).toBeNull();
+    expect(resolveVersionsTaskId([{ id: "tsk_real0001", status: "approved" }], false)).toBe("tsk_real0001");
+    expect(resolveVersionsTaskId([], true)).toBe("tsk_demo0002");
   });
 
   it("opens the matching task review after generation approval", async () => {

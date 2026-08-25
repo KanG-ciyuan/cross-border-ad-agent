@@ -123,6 +123,13 @@ textarea { min-height: 82px; resize: vertical; }
 .form-error { margin: 10px 0; color: var(--red); font-size: 13px; }
 .review-layout { display: grid; grid-template-columns: minmax(340px, .9fr) minmax(380px, 1.1fr); gap: 16px; }
 .video-player { padding: 12px; border-radius: var(--radius); background: #101513; }
+.real-review-video { display: block; width: min(100%, 340px); max-height: 620px; aspect-ratio: 9 / 16; margin: auto; background: #101513; object-fit: contain; }
+.output-preview { display: grid; grid-template-columns: minmax(150px, 220px) minmax(220px, 320px); align-items: start; gap: 24px; padding: 20px 24px; border: 1px solid var(--line); background: #fff; }
+.output-preview > div { display: grid; gap: 6px; }
+.output-preview > div span { color: var(--muted); font-size: 13px; }
+.output-preview video { width: 100%; max-height: 520px; aspect-ratio: 9 / 16; background: #101513; object-fit: contain; }
+.table-actions { display: flex; align-items: center; gap: 12px; }
+.table-actions a { display: inline-flex; align-items: center; gap: 4px; }
 .video-canvas { aspect-ratio: 9 / 16; max-height: 570px; position: relative; margin: auto; overflow: hidden; background: #dfece4; }
 .product-stage { position: absolute; inset: 20% 20% 25%; display: grid; place-items: center; align-content: center; gap: 12px; color: var(--green); }
 .selling-line, .caption-line { position: absolute; padding: 8px 10px; font-weight: 800; }
@@ -178,4 +185,5 @@ textarea { min-height: 82px; resize: vertical; }
   .scene-row.attention { margin: 0 -14px; padding-inline: 14px; }
   .review-actions { flex-direction: column; }
   .review-actions .button { width: 100%; }
+  .output-preview { grid-template-columns: 1fr; padding: 16px; }
 }

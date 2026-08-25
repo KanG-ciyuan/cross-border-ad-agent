@@ -72,7 +72,7 @@ export interface TaskDetail {
   task: PublicTask;
   assets: Array<{ id: string; originalFilename: string; mimeType: string }>;
   costFen: number;
-  versions: Array<{ id: string; versionNumber: number; editPlan: unknown; renderReceipt: unknown | null; createdAt: number }>;
+  versions: Array<{ id: string; versionNumber: number; editPlan: unknown; renderReceipt: unknown | null; outputAssetId?: string; createdAt: number }>;
 }
 
 export async function getTask(taskId: string) { return request<TaskDetail>(`/api/tasks/${taskId}`); }

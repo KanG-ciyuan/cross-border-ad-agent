@@ -24,6 +24,19 @@ describe("ConfirmationPage", () => {
 });
 
 describe("ReviewPage", () => {
+  it("previews the real rendered MP4 without simulated shot claims", () => {
+    render(<ReviewPage taskTitle="FreshClean 清洁剂" versionNumber={2}
+      videoUrl="/api/tasks/tsk_real0001/assets/ast_output001"
+      onRetryShot={() => undefined} onApproveContent={() => undefined} onApproveFinal={() => undefined} />);
+
+    expect(screen.getByLabelText("真实成片预览")).toHaveAttribute(
+      "src", "/api/tasks/tsk_real0001/assets/ast_output001"
+    );
+    expect(screen.getByText(/真实 MP4 成片/)).toBeInTheDocument();
+    expect(screen.queryByText("模拟生成结果")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新生成镜头 3" })).not.toBeInTheDocument();
+  });
+
   it("retries one shot without replacing successful shots and keeps final approval separate", async () => {
     const retryShot = vi.fn();
     const approveContent = vi.fn();

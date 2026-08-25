@@ -141,7 +141,7 @@ describe("asset upload API", () => {
     await env.MEDIA.put("outputs/output.mp4", bytes);
 
     const response = await createApp().fetch(new Request(
-      `${origin}/api/tasks/tsk_upload01/assets/ast_output01`,
+      `${origin}/api/tasks/tsk_upload01/assets/ast_output01?download=1`,
       { headers: { Cookie: `ad_session=${token}` } }
     ), bindings);
 

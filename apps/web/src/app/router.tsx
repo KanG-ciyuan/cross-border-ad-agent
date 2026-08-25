@@ -20,6 +20,21 @@ function toListItem(task: PublicTask): TaskListItem {
   return { id: task.id, name: task.title, mode, status: task.status, costFen: task.costFen ?? 0, updatedAtLabel: new Date(task.updatedAt).toLocaleString("zh-CN"), goal: task.goal };
 }
 
+export function resolveVersionsTaskId(
+  tasks: Array<{ id: string; status: string }>,
+  simulation: boolean
+) {
+  if (simulation) return "tsk_demo0002";
+  return tasks.find((task) => ["pending_content_review", "pending_final_approval", "approved"].includes(task.status))?.id ?? null;
+}
+
+function VersionsLanding({ tasks, simulation }: { tasks: TaskListItem[]; simulation: boolean }) {
+  const navigate = useNavigate();
+  const taskId = resolveVersionsTaskId(tasks, simulation);
+  if (taskId) return <Navigate to={`/tasks/${taskId}/versions`} replace />;
+  return <section className="page-section"><div className="state-panel"><h2>还没有成品版本</h2><p>完成一次真实剪辑后，MP4 会显示在这里。</p><button className="button primary" onClick={() => navigate("/tasks/new")}>新建剪辑任务</button></div></section>;
+}
+
 function ConfirmationRoute({ simulation }: { simulation: boolean }) {
   const navigate = useNavigate();
   const { taskId } = useParams();
@@ -100,7 +115,7 @@ function Workbench({ user, simulation }: { user: SessionUser; simulation: boolea
     <Route path="/tasks/:taskId/progress" element={<ProgressRoute tasks={tasks} simulation={simulation} onRefresh={refresh} />} />
     <Route path="/tasks/:taskId/review" element={<ReviewRoute simulation={simulation} />} />
     <Route path="/tasks/:taskId/versions" element={<VersionsRoute simulation={simulation} />} />
-    <Route path="/versions" element={<Navigate to="/tasks/tsk_demo0002/versions" replace />} />
+    <Route path="/versions" element={<VersionsLanding tasks={tasks} simulation={simulation} />} />
     <Route path="*" element={<Navigate to="/tasks" replace />} />
   </Routes>, [listState, navigate, operationError, refresh, simulation, tasks]);
   return <AppShell simulation={simulation} user={user}>{routes}</AppShell>;
@@ -129,8 +144,12 @@ function ReviewRoute({ simulation }: { simulation: boolean }) {
   if (!simulation && loadingError) return <section className="page-section"><div className="state-panel"><h2>无法加载审核任务</h2><p>{loadingError}</p><button className="button" onClick={() => navigate("/tasks")}>返回任务列表</button></div></section>;
   if (!simulation && !detail) return <section className="page-section"><div className="state-panel"><h2>正在加载审核任务</h2></div></section>;
   const taskTitle = detail?.task.title;
-  const versionNumber = detail?.versions[0]?.versionNumber;
-  return <ReviewPage taskTitle={taskTitle} versionNumber={versionNumber}
+  const renderedVersion = detail?.versions.find((version) => version.outputAssetId);
+  const versionNumber = renderedVersion?.versionNumber ?? detail?.versions[0]?.versionNumber;
+  const videoUrl = taskId && renderedVersion?.outputAssetId
+    ? `/api/tasks/${taskId}/assets/${renderedVersion.outputAssetId}`
+    : undefined;
+  return <ReviewPage taskTitle={taskTitle} versionNumber={versionNumber} videoUrl={videoUrl}
     initialContentApproved={detail?.task.status === "pending_final_approval"}
     onRetryShot={() => undefined} onApproveContent={async () => {
     if (!simulation && taskId) await reviewTask(taskId, "approve_content");
@@ -151,13 +170,13 @@ function VersionsRoute({ simulation }: { simulation: boolean }) {
     void getTask(taskId).then(setDetail).catch((reason) =>
       setLoadingError(reason instanceof Error ? reason.message : "版本加载失败"));
   }, [simulation, taskId]);
-  if (simulation) return <VersionsPage taskTitle="KLIN 去油喷雾" status="pending_content_review" costFen={1840}
+  if (simulation) return <VersionsPage taskId={taskId ?? "tsk_demo0002"} taskTitle="KLIN 去油喷雾" status="pending_content_review" costFen={1840}
     versions={[{ id: "ver_demo3", versionNumber: 3, renderReceipt: { status: "completed" }, createdAt: 3 },
       { id: "ver_demo2", versionNumber: 2, renderReceipt: null, createdAt: 2 }]}
     onReview={() => navigate(`/tasks/${taskId ?? "tsk_demo0002"}/review`)} />;
   if (loadingError) return <section className="page-section"><div className="state-panel"><h2>无法加载版本</h2><p>{loadingError}</p><button className="button" onClick={() => navigate("/tasks")}>返回任务列表</button></div></section>;
   if (!detail) return <section className="page-section"><div className="state-panel"><h2>正在加载版本</h2></div></section>;
-  return <VersionsPage taskTitle={detail.task.title} status={detail.task.status} costFen={detail.costFen}
+  return <VersionsPage taskId={taskId!} taskTitle={detail.task.title} status={detail.task.status} costFen={detail.costFen}
     versions={detail.versions} onReview={() => navigate(`/tasks/${taskId}/review`)} />;
 }
 
