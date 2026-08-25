@@ -96,6 +96,16 @@ describe("Worker binding boundary", () => {
     }
   );
 
+  it("rejects an unknown video-generation provider", async () => {
+    const response = await requestWith({
+      ...validBindings,
+      VIDEO_GENERATION_PROVIDER: "unknown-provider"
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: { code: "INVALID_WORKER_BINDINGS" } });
+  });
+
   it.each(["local", "test", "preview"] as const)(
     "refuses production-named D1 declaration metadata in %s",
     async (APP_ENV) => {

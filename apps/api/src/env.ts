@@ -3,6 +3,11 @@ export interface Env {
   MEDIA: R2Bucket;
   APP_ENV: "local" | "test" | "preview" | "production";
   SESSION_PEPPER: string;
+  ARK_API_KEY?: string;
+  SEEDANCE_MODEL_ID?: string;
+  MINIMAX_API_KEY?: string;
+  MINIMAX_MODEL_ID?: string;
+  VIDEO_GENERATION_PROVIDER?: "minimax" | "seedance";
   DECLARED_D1_DATABASE_NAME: string;
   DECLARED_R2_BUCKET_NAME: string;
 }
@@ -33,6 +38,9 @@ export function hasValidWorkerBindings(bindings: unknown): bindings is Env {
     candidate.DECLARED_R2_BUCKET_NAME.trim().length > 0;
 
   if (!hasRequiredBindings) return false;
+  if (candidate.VIDEO_GENERATION_PROVIDER !== undefined &&
+    candidate.VIDEO_GENERATION_PROVIDER !== "minimax" &&
+    candidate.VIDEO_GENERATION_PROVIDER !== "seedance") return false;
   if (candidate.APP_ENV === "production") return true;
 
   // These labels are fail-fast configuration metadata, not cloud identity proof.

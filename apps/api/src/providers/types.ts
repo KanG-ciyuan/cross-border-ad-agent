@@ -66,3 +66,37 @@ export interface AnalysisProvider {
 export interface RenderProvider {
   render(plan: EditPlanV1): Promise<RenderReceipt>;
 }
+
+export interface VideoGenerationInput {
+  prompt: string;
+  referenceImageUrls: readonly string[];
+  referenceVideoUrls?: readonly string[];
+  durationSeconds: number;
+  ratio?: "9:16" | "16:9" | "1:1";
+  resolution?: "720p" | "1080p" | "768P" | "2K";
+  generateAudio?: boolean;
+}
+
+export type VideoGenerationStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "expired"
+  | "cancelled";
+
+export interface VideoGenerationTask {
+  id: string;
+  model: string;
+  status: VideoGenerationStatus;
+  videoUrl?: string;
+  errorCode?: string;
+  durationSeconds?: number;
+  ratio?: string;
+  resolution?: string;
+}
+
+export interface VideoGenerationProvider {
+  createTask(input: VideoGenerationInput): Promise<VideoGenerationTask>;
+  getTask(taskId: string): Promise<VideoGenerationTask>;
+}

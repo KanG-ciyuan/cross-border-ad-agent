@@ -14,6 +14,9 @@
   // and `wrangler secret put SESSION_PEPPER --env preview` for preview.
   "vars": {
     "APP_ENV": "local",
+    "VIDEO_GENERATION_PROVIDER": "minimax",
+    "MINIMAX_MODEL_ID": "MiniMax-H3",
+    "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
     "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-local-db",
     "DECLARED_R2_BUCKET_NAME": "cross-border-ad-agent-local-media"
   },
@@ -36,6 +39,9 @@
       "name": "cross-border-ad-agent-preview",
       "vars": {
         "APP_ENV": "preview",
+        "VIDEO_GENERATION_PROVIDER": "minimax",
+        "MINIMAX_MODEL_ID": "MiniMax-H3",
+        "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
         "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-preview-db",
         "DECLARED_R2_BUCKET_NAME": "cross-border-ad-agent-preview-media"
       },
