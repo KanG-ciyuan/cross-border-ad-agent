@@ -1,7 +1,8 @@
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashSessionToken } from "../src/auth/password";
 import { AuthRepository } from "../src/auth/repository";
+import { FakeRenderProvider } from "../src/providers/fake-renderer";
 import { TaskRepository } from "../src/tasks/repository";
 import { createApp } from "../src/index";
 
@@ -61,8 +62,20 @@ const completeCreation = {
   referenceGeneration: ["three_view", "nine_grid"]
 };
 
+async function seedEditPlan(repository: TaskRepository, taskId: string) {
+  await repository.saveVersion({
+    id: `ver_${crypto.randomUUID()}`, taskId, versionNumber: 1, createdAt: Date.now(),
+    editPlan: { version: "edit_plan.v1", taskId, output: { width: 1080, height: 1920, fps: 30, language: "id-ID" },
+      tracks: [{ id: "trk_video001", type: "video", clips: [{ id: "clp_video001", assetId: "ast_video001", startMs: 0, endMs: 1000, origin: "uploaded" }] }],
+      cost: { currency: "CNY", estimatedFen: 300, limitFen: 1_000 }, approvals: [] }
+  });
+}
+
 describe("task API", () => {
-  beforeEach(() => seedIdentity());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    return seedIdentity();
+  });
 
   it("creates complete-creation and edit-only tasks as separate payload shapes", async () => {
     const app = createApp();
@@ -279,6 +292,7 @@ describe("task API", () => {
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
     await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    await seedEditPlan(repository, taskId);
     const render = () => createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "render-once" },
       body: JSON.stringify({})
@@ -291,6 +305,57 @@ describe("task API", () => {
     expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(1);
   });
 
+  it("does not execute rendering when another request already reserved the same key", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    await seedEditPlan(repository, taskId);
+    vi.spyOn(TaskRepository.prototype, "reserveStepAttempt").mockResolvedValue({
+      reserved: false,
+      attemptId: "atm_already_reserved"
+    });
+    const renderSpy = vi.spyOn(FakeRenderProvider.prototype, "render");
+
+    const response = await createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "render-raced" }, body: "{}"
+    }), bindings);
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ attemptId: "atm_already_reserved" });
+    expect(renderSpy).not.toHaveBeenCalled();
+    expect((await repository.getTaskForUser(taskId, "usr_owner"))?.status).toBe("ready_to_render");
+  });
+
+  it("marks a failed render retryable and charges only the successful retry", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    await seedEditPlan(repository, taskId);
+    vi.spyOn(FakeRenderProvider.prototype, "render").mockRejectedValueOnce(new Error("provider unavailable"));
+    const run = (key: string) => createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: "{}"
+    }), bindings);
+
+    const failed = await run("render-fails-once");
+    expect(failed.status).toBe(502);
+    expect((await repository.getTaskForUser(taskId, "usr_owner"))?.status).toBe("failed_retryable");
+    expect((await repository.listStepAttempts(taskId, "usr_owner"))[0]).toMatchObject({ status: "failed" });
+
+    const retry = await run("render-retry");
+    expect(retry.status).toBe(202);
+    expect((await repository.getTaskForUser(taskId, "usr_owner"))?.status).toBe("pending_content_review");
+    expect(await repository.sumCostFen(taskId, "usr_owner")).toBe(300);
+    expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(2);
+  });
+
   it("allows only one concurrent render transition across different keys", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -299,6 +364,7 @@ describe("task API", () => {
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
     await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    await seedEditPlan(repository, taskId);
     const render = (key: string) => createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: "{}"
     }), bindings);
@@ -354,7 +420,11 @@ describe("task API", () => {
       bindings
     );
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
-    await new TaskRepository(env.DB).updateTaskStatus(taskId, "usr_owner", "uploaded", Date.now());
+    const repository = new TaskRepository(env.DB);
+    await repository.saveAsset({ id: "ast_video001", taskId, companyId: "cmp_acme", kind: "source_video",
+      objectKey: `assets/${crypto.randomUUID()}`, originalFilename: "source.mp4", mimeType: "video/mp4",
+      sizeBytes: 100, origin: "user_upload", metadata: {}, createdAt: Date.now() });
+    await repository.updateTaskStatus(taskId, "usr_owner", "uploaded", Date.now());
 
     const run = () =>
       createApp().fetch(
@@ -371,5 +441,51 @@ describe("task API", () => {
     expect(second.status).toBe(202);
     expect((await first.json()) as unknown).toEqual((await second.json()) as unknown);
     expect(await new TaskRepository(env.DB).listStepAttempts(taskId, "usr_owner")).toHaveLength(1);
+  });
+
+  it("runs the persisted complete-creation fake-provider workflow end to end", async () => {
+    const app = createApp();
+    const create = await app.fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(completeCreation)
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const image = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const upload = await app.fetch(apiRequest(`/api/tasks/${taskId}/assets`, {
+      method: "POST", headers: { "Content-Type": "image/jpeg", "Content-Length": String(image.byteLength),
+        "X-Filename": encodeURIComponent("front.jpg") }, body: image
+    }), bindings);
+    expect(upload.status).toBe(201);
+    expect((await app.fetch(apiRequest(`/api/tasks/${taskId}/analyze`, {
+      method: "POST", headers: { "Idempotency-Key": "full-flow-analysis" }, body: "{}"
+    }), bindings)).status).toBe(202);
+    const analyzed = (await (await app.fetch(apiRequest(`/api/tasks/${taskId}`), bindings)).json()) as {
+      task: { status: string }; versions: Array<{ id: string }>
+    };
+    expect(analyzed.task.status).toBe("awaiting_generation_approval");
+    const versionId = analyzed.versions[0]!.id;
+    for (const kind of ["reference", "storyboard", "cost", "risk"]) {
+      const approval = await app.fetch(apiRequest(`/api/tasks/${taskId}/approvals`, {
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `full-flow-${kind}` },
+        body: JSON.stringify({ kind, decision: "approved", snapshot: { versionId } })
+      }), bindings);
+      expect(approval.status).toBe(201);
+    }
+    const render = await app.fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "full-flow-render" }, body: "{}"
+    }), bindings);
+    expect(render.status).toBe(202);
+    for (const action of ["approve_content", "approve_final"] as const) {
+      const review = await app.fetch(apiRequest(`/api/tasks/${taskId}/review`, {
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `full-flow-${action}` },
+        body: JSON.stringify({ action })
+      }), bindings);
+      expect(review.status).toBe(200);
+    }
+    const completed = (await (await app.fetch(apiRequest(`/api/tasks/${taskId}`), bindings)).json()) as {
+      task: { status: string }; costFen: number; versions: unknown[]
+    };
+    expect(completed.task.status).toBe("approved");
+    expect(completed.costFen).toBe(1_800);
+    expect(completed.versions).toHaveLength(2);
   });
 });

@@ -2,31 +2,31 @@
 
 Date: 2026-08-25
 
-This report covers local acceptance of the Vite demo. It is not evidence of production readiness or a Cloudflare deployment.
+This report covers local acceptance only. It is not evidence of production readiness or a Cloudflare deployment.
 
 ## Verified locally
 
-- Playwright exercises the complete-creation path from product input and fixture upload through all generation confirmations, simulated review, content approval, final approval, and a visible RMB-costed version.
-- Playwright exercises edit-only selection, fixture upload, removal of product/generation controls, selection of trim/concat/captions only, and direct navigation to review.
-- The complete-creation and edit-only scenarios exercise the login form and verify the submitted email/password request shape with only `POST /api/auth/login` mocked to return success.
-- The built-in sample review route can be opened in a fresh demo browser context.
-- Desktop Chromium at `1440 x 900` and mobile Chromium at `390 x 844` are checked for root-level horizontal overflow and browser console/page errors.
-- Playwright stores explicit screenshots under `apps/web/test-results/<spec-and-test-slug>-<project-name>/<screenshot-name>.png`. Current examples are `apps/web/test-results/complete-creation-complete-bf3d5-ches-a-costed-final-version-desktop-chromium/complete-creation-final.png` and `apps/web/test-results/edit-only-edit-only-remove-b79ec--submits-directly-to-review-mobile-chromium/edit-only-review.png`. Failure screenshots, traces, and videos use the same ignored combined test/project directory pattern. The HTML report is stored under `apps/web/playwright-report/`.
+- The browser checks the real session endpoint, submits the company email/password login form, and uses the task API after authentication. E2E uses narrowly scoped login/session/list mocks; API authentication and 401 behavior are covered separately by integration tests.
+- Task creation persists the complete input in local D1. Uploaded files stream into local R2 with file type and 25 MB size enforcement.
+- The deterministic fake analysis provider creates and persists an edit plan. Complete-creation tasks require reference, storyboard, cost, and risk approvals before render.
+- The deterministic fake render path persists a new version, one RMB cost entry, a render receipt, content review, and final approval.
+- Render reservation is idempotent. A losing concurrent request does not run the provider. A provider failure marks the attempt failed and the task retryable; a new request can retry without charging the failed attempt.
+- The web task list, confirmation screen, review screen, and version table read current API task data. The edit-only flow bypasses reference/storyboard generation and exposes only the selected editing operations.
+- Playwright checks complete-creation and edit-only demo flows in desktop Chromium at `1440 x 900` and mobile Chromium at `390 x 844`, including interaction, console errors, and root-level horizontal overflow.
 
 ## Simulated boundaries
 
-- After the mocked login response, the browser uses fixed sample tasks plus React in-memory state from `apps/web/src/app/router.tsx`. The direct built-in recovery check uses `?demo=1` to create a fresh simulated context.
-- Product analysis, reference images, storyboard output, video output, retry behavior, costs, approvals, and versions displayed by the browser are simulated examples.
-- API provider tests use deterministic fake analysis and rendering providers. They do not prove external model or rendering service behavior.
+- Analysis and rendering use deterministic fake providers. The render receipt is structured test data, not a playable video file.
+- Demo browser flows use `?demo=1` and sample data so UI behavior can be verified without a local company account.
+- The review player, generated reference images, storyboard visuals, Indonesian copy, and retry-shot action remain illustrative UI. They are not outputs from Seedance or a real renderer.
 
-## Unverified
+## Not yet verified
 
-- A task created in the Vite demo does not survive a reload, a fresh browser context, or another device. The real cross-device/session recovery assertion is explicitly skipped until the frontend is connected to the D1-backed task API.
-- The edit-only task API payload assertion is explicitly skipped. The UI strips generation and product controls, and a component test covers its callback payload, but the frontend does not issue a task API request; therefore exclusion of generation, product, claim, and extra-copy fields at the HTTP boundary is unverified.
-- Real backend login, cookie issuance, session persistence, expiry, and authorization integration are unverified; the acceptance test verifies only the login UI and request shape against a mocked successful response.
-- Cloudflare Workers, D1, R2, preview environments, production deployment, bindings, quotas, recovery, and observability have not been exercised by this acceptance run.
-- Seedance integration, TTS integration, real image/video generation, Remotion/FFmpeg rendering, Jianying automation, TikTok publishing, and real provider pricing or concurrency have not been verified.
-- No Cloudflare resources were created, no deployment was performed, and no credentials were read or changed for this verification.
+- A real local company login has not been accepted in the browser because `apps/api/.dev.vars` and a local authorized user have not been configured. Password entry must be performed by the user in the hidden TTY prompt.
+- Cross-device persistence through a deployed Cloudflare Worker, remote D1, and remote R2 is unverified. No Cloudflare resource was created or changed and no deployment was performed.
+- Existing tasks created before migration `0002_task_input.sql` contain no reconstructable product facts. They must be recreated before analysis; the migration deliberately does not invent product claims or compliance data.
+- Seedance, TTS, real image/video generation, Remotion/FFmpeg rendering, Jianying automation, TikTok publishing, provider pricing, and provider concurrency are not connected or verified.
+- No credentials were read, displayed, moved, replaced, or committed.
 
 ## Commands
 
@@ -37,6 +37,7 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm test:e2e
+git diff --check
 ```
 
-The Playwright command always starts its own Vite server at `http://127.0.0.1:4187` for the duration of the test run. Existing servers are never reused, and strict port handling fails the run if that address is occupied.
+Playwright starts an isolated Vite server at `http://127.0.0.1:4187`. Test screenshots and traces are generated under ignored Playwright output directories.

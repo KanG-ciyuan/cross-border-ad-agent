@@ -10,6 +10,7 @@ export interface TaskListItem {
   costFen: number;
   updatedAtLabel: string;
   thumbnailUrl?: string;
+  goal?: "complete_creation" | "edit_only";
 }
 
 type ListState = "loading" | "empty" | "error" | "ready";

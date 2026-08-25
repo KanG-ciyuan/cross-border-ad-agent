@@ -3,10 +3,12 @@ import { evaluateGeneration, transition, type WorkflowEvent } from "@ad-agent/wo
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { getAuthenticatedUser, isSameOrigin } from "../auth/session";
+import { FakeAnalysisProvider } from "../providers/fake-analysis";
+import { FakeRenderProvider } from "../providers/fake-renderer";
 import { TaskRepository, type TaskRecord } from "./repository";
 
-function error(code: string, message: string) {
-  return { error: { code, message, retryable: false } };
+function error(code: string, message: string, retryable = false) {
+  return { error: { code, message, retryable } };
 }
 
 async function jsonBody(context: { req: { json(): Promise<unknown> } }) {
@@ -68,6 +70,8 @@ export function createTaskRoutes() {
       ],
       referenceGeneration: input.goal === "complete_creation" ? input.referenceGeneration : undefined,
       aiVideoEnabled: input.goal === "complete_creation",
+      budgetFen: input.goal === "complete_creation" ? 4_500 : 1_000,
+      input,
       createdAt: Date.now()
     });
     return context.json({ task: publicTask(task) }, 201);
@@ -76,8 +80,9 @@ export function createTaskRoutes() {
   routes.get("/", async (context) => {
     const user = await getAuthenticatedUser(context);
     if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
-    const tasks = await new TaskRepository(context.env.DB).listTasksForUser(user.id);
-    return context.json({ tasks: tasks.map(publicTask) });
+    const repository = new TaskRepository(context.env.DB);
+    const tasks = await repository.listTasksForUser(user.id);
+    return context.json({ tasks: await Promise.all(tasks.map(async (task) => ({ ...publicTask(task), costFen: await repository.sumCostFen(task.id, user.id) }))) });
   });
 
   routes.get("/:taskId", async (context) => {
@@ -118,6 +123,10 @@ export function createTaskRoutes() {
     const repository = new TaskRepository(context.env.DB);
     const task = await repository.getTaskForUser(context.req.param("taskId"), access.user.id);
     if (!task) return context.json(error("NOT_FOUND", "Task not found"), 404);
+    const parsedInput = TaskCreateInput.safeParse(task.input);
+    if (!parsedInput.success) return context.json(error("INVALID_INPUT", "Persisted task input is invalid"), 409);
+    const assets = await repository.listAssetsForTask(task.id, access.user.id);
+    if (!assets.length) return context.json(error("MATERIAL_REQUIRED", "At least one uploaded asset is required"), 409);
     const now = Date.now();
     const reservation = await repository.reserveStepAttempt({
       idempotencyKey: key, companyId: access.user.companyId, userId: access.user.id,
@@ -126,9 +135,25 @@ export function createTaskRoutes() {
         status: "queued", provider: "pending", request: {}, createdAt: now },
       expiresAt: now + 86_400_000
     });
-    if (reservation.reserved) {
-      await repository.updateTaskStatus(task.id, access.user.id, nextStatus(task, "start_analysis"), now);
-    }
+    if (!reservation.reserved) return context.json({ attemptId: reservation.attemptId }, 202);
+    await repository.updateTaskStatus(task.id, access.user.id, nextStatus(task, "start_analysis"), now);
+    const analysis = await new FakeAnalysisProvider().analyze({
+      taskId: task.id, goal: task.goal, market: "ID", platform: "tiktok",
+      product: parsedInput.data.goal === "complete_creation" ? {
+        name: parsedInput.data.product.name, facts: parsedInput.data.product.facts,
+        approvedClaims: parsedInput.data.product.approvedClaims
+      } : undefined,
+      assets: assets.map((asset) => ({ id: asset.id, kind: asset.kind as "product_image" | "source_video" })),
+      allowedOperations: task.allowedOperations as ("trim" | "concat" | "captions" | "voiceover" | "stickers" | "transitions" | "music")[],
+      referenceGeneration: (task.referenceGeneration ?? []) as ("three_view" | "nine_grid")[],
+      costLimitFen: task.budgetFen ?? 4_500
+    });
+    await repository.saveVersion({ id: `ver_${crypto.randomUUID()}`, taskId: task.id,
+      versionNumber: 1, editPlan: analysis.editPlan, createdAt: now });
+    await repository.completeStepAttempt({ attemptId: reservation.attemptId, taskId: task.id,
+      userId: access.user.id, provider: "fake_analysis", result: analysis, updatedAt: now });
+    await repository.updateTaskStatus(task.id, access.user.id,
+      nextStatus({ ...task, status: "analyzing" }, task.goal === "complete_creation" ? "require_generation_approval" : "analysis_ready"), now);
     return context.json({ attemptId: reservation.attemptId }, 202);
   });
 
@@ -157,6 +182,13 @@ export function createTaskRoutes() {
         (saved.approval.note ?? undefined) !== approval.note || JSON.stringify(saved.approval.snapshot) !== JSON.stringify(approval.snapshot))) {
         return context.json(error("CONFLICT", "Idempotency-Key was used with a different approval payload"), 409);
       }
+      if (saved.created && task.goal === "complete_creation" && task.status === "awaiting_generation_approval") {
+        const required = ["reference", "storyboard", "cost", "risk"];
+        const allApproved = (await Promise.all(required.map((kind) => repository.getLatestApproval(task.id, access.user.id, kind))))
+          .every((item) => item?.decision === "approved");
+        if (allApproved) await repository.transitionTaskStatus(task.id, access.user.id,
+          "awaiting_generation_approval", "ready_to_render", Date.now());
+      }
       return context.json({ approval: saved.approval }, saved.created ? 201 : 200);
     } catch {
       return context.json(error("CONFLICT", "Idempotency-Key was used for another operation"), 409);
@@ -178,7 +210,9 @@ export function createTaskRoutes() {
     const previousAttemptId = await repository.getAttemptForIdempotency({ companyId: access.user.companyId,
       key, userId: access.user.id, taskId: task.id, operation: "render" });
     if (previousAttemptId) return context.json({ attemptId: previousAttemptId }, 202);
-    if (task.status !== "ready_to_render") return context.json(error("CONFLICT", "Task is not ready to render"), 409);
+    if (!["ready_to_render", "failed_retryable"].includes(task.status)) {
+      return context.json(error("CONFLICT", "Task is not ready to render"), 409);
+    }
     if (task.goal === "complete_creation") {
       const approved = async (kind: string) =>
         (await repository.getLatestApproval(task.id, access.user.id, kind))?.decision === "approved";
@@ -215,17 +249,34 @@ export function createTaskRoutes() {
       if (!costDecision.allowed) return context.json(error(costDecision.reason, "Generation is blocked"), 409);
     }
     const now = Date.now();
+    const attemptNumber = await repository.nextStepAttemptNumber(task.id, access.user.id, "render");
+    let reservation: { reserved: boolean; attemptId: string };
     try {
-      const reservation = await repository.reserveStepAttempt({
+      reservation = await repository.reserveStepAttempt({
         idempotencyKey: key, companyId: access.user.companyId, userId: access.user.id,
         taskId: task.id, operation: "render",
-        attempt: { id: `atm_${crypto.randomUUID()}`, step: "render", attemptNumber: 1,
+        attempt: { id: `atm_${crypto.randomUUID()}`, step: "render", attemptNumber,
           status: "queued", provider: "pending", request: body, createdAt: now },
-        expiresAt: now + 86_400_000, expectedStatus: "ready_to_render", nextStatus: "rendering"
+        expiresAt: now + 86_400_000, expectedStatus: task.status, nextStatus: "rendering"
       });
-      return context.json({ attemptId: reservation.attemptId }, 202);
     } catch {
       return context.json(error("CONFLICT", "Task status changed before rendering started"), 409);
+    }
+    if (!reservation.reserved) return context.json({ attemptId: reservation.attemptId }, 202);
+    try {
+      const latestVersion = (await repository.listVersions(task.id, access.user.id))[0];
+      if (!latestVersion) throw new Error("EDIT_PLAN_MISSING");
+      const plan = EditPlanV1.parse(latestVersion.editPlan);
+      const receipt = await new FakeRenderProvider().render(plan);
+      await repository.completeRender({ attemptId: reservation.attemptId, taskId: task.id,
+        userId: access.user.id, provider: "fake_renderer", amountFen: plan.cost.estimatedFen,
+        version: { id: `ver_${crypto.randomUUID()}`, versionNumber: latestVersion.versionNumber + 1,
+          editPlan: plan, renderReceipt: receipt, createdAt: Date.now() }, updatedAt: Date.now() });
+      return context.json({ attemptId: reservation.attemptId }, 202);
+    } catch {
+      await repository.failRenderAttempt({ attemptId: reservation.attemptId, taskId: task.id,
+        userId: access.user.id, errorCode: "RENDER_FAILED", updatedAt: Date.now() });
+      return context.json(error("RENDER_FAILED", "Rendering failed and can be retried", true), 502);
     }
   });
 

@@ -4,6 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import { CreateTaskPage } from "./CreateTaskPage";
 
 describe("CreateTaskPage", () => {
+  it("prevents duplicate submissions while task creation is running", async () => {
+    let finishSubmit: (() => void) | undefined;
+    const submit = vi.fn(() => new Promise<void>((resolve) => { finishSubmit = resolve; }));
+    render(<CreateTaskPage onSubmit={submit} onCancel={() => undefined} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "开始分析资料" }));
+
+    const submitting = screen.getByRole("button", { name: "正在创建任务" });
+    expect(submitting).toBeDisabled();
+    await userEvent.click(submitting);
+    expect(submit).toHaveBeenCalledTimes(1);
+    finishSubmit?.();
+    expect(await screen.findByRole("button", { name: "开始分析资料" })).toBeEnabled();
+  });
+
   it("submits edit-only without any generation or product fields", async () => {
     const submit = vi.fn();
     render(<CreateTaskPage onSubmit={submit} onCancel={() => undefined} />);

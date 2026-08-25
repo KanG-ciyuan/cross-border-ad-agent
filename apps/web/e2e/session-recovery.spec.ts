@@ -14,7 +14,7 @@ test("a fresh demo context can recover a directly addressed built-in review rout
 
   await page.goto("/tasks/tsk_demo0002/review?demo=1");
   await expect(page.getByRole("heading", { name: "审核广告初版" })).toBeVisible();
-  await expect(page.getByText("版本 V3 · 26秒 · 模拟生成结果")).toBeVisible();
+  await expect(page.getByText(/KLIN 500 ml.*版本 V3.*模拟生成结果/)).toBeVisible();
   const hasOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   );

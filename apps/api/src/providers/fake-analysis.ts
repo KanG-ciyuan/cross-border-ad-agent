@@ -48,7 +48,7 @@ export class FakeAnalysisProvider implements AnalysisProvider {
           provenance: { provider: "fake_analysis", sourceAssetIds }
         }))
       : [];
-    const estimateFen = 12_500;
+    const estimateFen = 1_800;
     const editPlan = EditPlanV1.parse({
       version: "edit_plan.v1",
       taskId: input.taskId,

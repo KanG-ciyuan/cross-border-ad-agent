@@ -17,9 +17,16 @@ async function expectNoRootOverflow(page: Page) {
 }
 
 async function loginThroughUi(page: Page) {
+  await page.route("**/api/auth/me", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ user: null })
+  }));
+  await page.route("**/api/tasks", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ tasks: [] }) });
+  });
   await page.route("**/api/auth/login", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
-    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "usr_qa", email: "qa@company.test", companyId: "cmp_qa" } }) });
   });
   await page.goto("/tasks/new");
   await expect(page.getByRole("heading", { name: "公司成员登录" })).toBeVisible();
@@ -33,6 +40,7 @@ async function loginThroughUi(page: Page) {
     email: "qa@company.test",
     password: "not-a-real-password"
   });
+  await page.goto("/tasks/new?demo=1");
 }
 
 test("edit-only removes generation fields and submits directly to review", async ({ page }, testInfo: TestInfo) => {

@@ -15,6 +15,7 @@ export interface TaskRecord {
   referenceGeneration: string[] | null;
   aiVideoEnabled: boolean;
   budgetFen: number | null;
+  input: unknown;
   createdAt: number;
   updatedAt: number;
 }
@@ -33,6 +34,7 @@ interface TaskRow {
   reference_generation_json: string | null;
   ai_video_enabled: number;
   budget_fen: number | null;
+  input_json: string;
   created_at: number;
   updated_at: number;
 }
@@ -110,6 +112,7 @@ function mapTask(row: TaskRow): TaskRecord {
       : null,
     aiVideoEnabled: row.ai_video_enabled === 1,
     budgetFen: row.budget_fen,
+    input: parseJson<unknown>(row.input_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -133,14 +136,15 @@ export class TaskRepository {
     aiVideoEnabled: boolean;
     budgetFen?: number;
     createdAt: number;
+    input?: unknown;
   }): Promise<TaskRecord> {
     await this.db
       .prepare(
         `INSERT INTO tasks (
           id, user_id, company_id, title, goal, input_mode, market, platform,
           status, allowed_operations_json, reference_generation_json,
-          ai_video_enabled, budget_fen, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ai_video_enabled, budget_fen, input_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         input.id,
@@ -156,6 +160,7 @@ export class TaskRepository {
         input.referenceGeneration ? JSON.stringify(input.referenceGeneration) : null,
         input.aiVideoEnabled ? 1 : 0,
         input.budgetFen ?? null,
+        JSON.stringify(input.input ?? {}),
         input.createdAt,
         input.createdAt
       )
@@ -171,7 +176,7 @@ export class TaskRepository {
       .prepare(
         `SELECT id, user_id, company_id, title, goal, input_mode, market, platform,
           status, allowed_operations_json, reference_generation_json,
-          ai_video_enabled, budget_fen, created_at, updated_at
+          ai_video_enabled, budget_fen, input_json, created_at, updated_at
          FROM tasks WHERE id = ? AND user_id = ?`
       )
       .bind(taskId, userId)
@@ -185,7 +190,7 @@ export class TaskRepository {
       .prepare(
         `SELECT id, user_id, company_id, title, goal, input_mode, market, platform,
           status, allowed_operations_json, reference_generation_json,
-          ai_video_enabled, budget_fen, created_at, updated_at
+          ai_video_enabled, budget_fen, input_json, created_at, updated_at
          FROM tasks WHERE user_id = ? ORDER BY updated_at DESC`
       )
       .bind(userId)
@@ -627,6 +632,95 @@ export class TaskRepository {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
+  }
+
+  async nextStepAttemptNumber(taskId: string, userId: string, step: string): Promise<number> {
+    const row = await this.db.prepare(
+      `SELECT COALESCE(MAX(a.attempt_number), 0) + 1 AS next_number
+       FROM step_attempts a
+       INNER JOIN tasks t ON t.id = a.task_id
+       WHERE a.task_id = ? AND t.user_id = ? AND a.step = ?`
+    ).bind(taskId, userId, step).first<{ next_number: number }>();
+    return row?.next_number ?? 1;
+  }
+
+  async completeStepAttempt(input: {
+    attemptId: string;
+    taskId: string;
+    userId: string;
+    provider: string;
+    result: unknown;
+    updatedAt: number;
+  }) {
+    const result = await this.db.prepare(
+      `UPDATE step_attempts SET status = 'completed', provider = ?, result_json = ?, updated_at = ?
+       WHERE id = ? AND task_id = ? AND EXISTS (SELECT 1 FROM tasks WHERE id = ? AND user_id = ?)`
+    ).bind(input.provider, JSON.stringify(input.result), input.updatedAt, input.attemptId,
+      input.taskId, input.taskId, input.userId).run();
+    return result.meta.changes === 1;
+  }
+
+  async failRenderAttempt(input: {
+    attemptId: string;
+    taskId: string;
+    userId: string;
+    errorCode: string;
+    updatedAt: number;
+  }): Promise<void> {
+    await this.db.batch([
+      this.db.prepare(
+        `UPDATE step_attempts SET status = 'failed', error_code = ?, updated_at = ?
+         WHERE id = ? AND task_id = ? AND status = 'queued'
+         AND EXISTS (SELECT 1 FROM tasks WHERE id = ? AND user_id = ?)`
+      ).bind(input.errorCode, input.updatedAt, input.attemptId, input.taskId, input.taskId, input.userId),
+      this.db.prepare(
+        `UPDATE tasks SET status = 'failed_retryable', updated_at = ?
+         WHERE id = ? AND user_id = ? AND status = 'rendering'`
+      ).bind(input.updatedAt, input.taskId, input.userId)
+    ]);
+  }
+
+  async completeRender(input: {
+    attemptId: string;
+    taskId: string;
+    userId: string;
+    version: {
+      id: string;
+      versionNumber: number;
+      editPlan: unknown;
+      renderReceipt: unknown;
+      createdAt: number;
+    };
+    provider: string;
+    amountFen: number;
+    updatedAt: number;
+  }): Promise<void> {
+    await this.db.batch([
+      this.db.prepare(
+        `INSERT INTO task_versions (
+          id, task_id, version_number, edit_plan_json, render_receipt_json,
+          output_asset_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, NULL, ?)`
+      ).bind(input.version.id, input.taskId, input.version.versionNumber,
+        JSON.stringify(input.version.editPlan), JSON.stringify(input.version.renderReceipt), input.version.createdAt),
+      this.db.prepare(
+        `UPDATE step_attempts SET status = 'completed', provider = ?, result_json = ?, updated_at = ?
+         WHERE id = ? AND task_id = ? AND status = 'queued'
+         AND EXISTS (SELECT 1 FROM tasks WHERE id = ? AND user_id = ?)`
+      ).bind(input.provider, JSON.stringify(input.version.renderReceipt), input.updatedAt,
+        input.attemptId, input.taskId, input.taskId, input.userId),
+      this.db.prepare(
+        `INSERT INTO cost_entries (
+          id, task_id, attempt_id, category, provider, amount_fen, estimated, created_at
+        ) VALUES (?, ?, ?, 'render', ?, ?, 0, ?)`
+      ).bind(`cost_${crypto.randomUUID()}`, input.taskId, input.attemptId,
+        input.provider, input.amountFen, input.updatedAt),
+      this.db.prepare(
+        `UPDATE tasks SET status = 'pending_content_review', updated_at = ?
+         WHERE id = ? AND user_id = ? AND status = 'rendering'
+         AND EXISTS (SELECT 1 FROM step_attempts WHERE id = ? AND status = 'completed')`
+      ).bind(input.updatedAt, input.taskId, input.userId, input.attemptId)
+    ]);
   }
 
   async appendCostEntry(input: {

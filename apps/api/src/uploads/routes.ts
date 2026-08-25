@@ -37,8 +37,8 @@ export function createUploadRoutes() {
     if (!isSameOrigin(context.req.raw)) return context.json(error("FORBIDDEN", "Request denied"), 403);
     const user = await getAuthenticatedUser(context);
     if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
-    const lengthHeader = context.req.header("Content-Length");
-    if (!lengthHeader) return context.json(error("LENGTH_REQUIRED", "Content-Length is required for buffered uploads"), 411);
+    const lengthHeader = context.req.header("Content-Length") ?? context.req.header("X-File-Size");
+    if (!lengthHeader) return context.json(error("LENGTH_REQUIRED", "Content-Length or X-File-Size is required"), 411);
     const declaredLength = Number(lengthHeader);
     if (!Number.isSafeInteger(declaredLength) || declaredLength <= 0) {
       return context.json(error("INVALID_INPUT", "Content-Length is invalid"), 400);
