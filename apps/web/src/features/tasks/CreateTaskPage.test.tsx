@@ -12,11 +12,13 @@ describe("CreateTaskPage", () => {
     expect(screen.queryByLabelText("产品名称")).not.toBeInTheDocument();
     expect(screen.queryByText("生成三视图")).not.toBeInTheDocument();
     expect(screen.getByLabelText("剪辑要求")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "转场" }));
     await userEvent.click(screen.getByRole("button", { name: "检查并开始剪辑" }));
 
     expect(submit).toHaveBeenCalledOnce();
     const payload = submit.mock.calls[0]![0];
     expect(payload.goal).toBe("edit_only");
+    expect(payload.allowedOperations).toEqual(["trim", "concat", "captions"]);
     expect(payload).not.toHaveProperty("product");
     expect(payload).not.toHaveProperty("referenceGeneration");
   });

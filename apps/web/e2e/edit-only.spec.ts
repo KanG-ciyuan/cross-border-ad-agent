@@ -56,6 +56,9 @@ test("edit-only removes generation fields and submits directly to review", async
   await expect(page.getByRole("checkbox", { name: "筛选与裁剪" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "片段拼接" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "字幕" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "转场" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "贴纸" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "背景音乐" })).not.toBeChecked();
   await page.getByRole("button", { name: "检查并开始剪辑" }).click();
 
   await expect(page).toHaveURL(/\/tasks\/tsk_demo0004\/review$/);

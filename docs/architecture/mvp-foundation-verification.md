@@ -39,4 +39,4 @@ pnpm build
 pnpm test:e2e
 ```
 
-The Playwright command starts the existing Vite demo locally at `http://127.0.0.1:4187` for the duration of the test run.
+The Playwright command always starts its own Vite server at `http://127.0.0.1:4187` for the duration of the test run. Existing servers are never reused, and strict port handling fails the run if that address is occupied.
