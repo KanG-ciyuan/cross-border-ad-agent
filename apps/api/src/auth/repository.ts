@@ -114,6 +114,20 @@ export class AuthRepository {
     return row ? mapUser(row) : null;
   }
 
+  async findUserById(id: string): Promise<AuthorizedUser | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, company_id, email, password_hash, password_salt,
+          password_iterations, created_at, disabled_at
+         FROM users
+         WHERE id = ? AND disabled_at IS NULL`
+      )
+      .bind(id)
+      .first<UserRow>();
+
+    return row ? mapUser(row) : null;
+  }
+
   async createSession(input: {
     id: string;
     userId: string;
@@ -152,5 +166,9 @@ export class AuthRepository {
       .first<SessionRow>();
 
     return row ? mapSession(row) : null;
+  }
+
+  async deleteSessionByTokenHash(tokenHash: string): Promise<void> {
+    await this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
   }
 }
