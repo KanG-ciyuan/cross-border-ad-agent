@@ -5,6 +5,7 @@ import { pbkdf2Sync, randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveLocalWrangler } from "./local-wrangler.mjs";
 
 const ITERATIONS = 210_000;
 
@@ -62,14 +63,11 @@ function escapeSql(value) {
 }
 
 async function runWrangler(sqlFile) {
+  const wrangler = await resolveLocalWrangler();
   return new Promise((resolve, reject) => {
     const child = spawn(
-      "pnpm",
+      wrangler.executable,
       [
-        "--filter",
-        "@ad-agent/api",
-        "exec",
-        "wrangler",
         "d1",
         "execute",
         "DB",
@@ -78,7 +76,7 @@ async function runWrangler(sqlFile) {
         sqlFile,
         "--yes"
       ],
-      { stdio: ["ignore", "ignore", "inherit"] }
+      { cwd: wrangler.cwd, stdio: ["ignore", "ignore", "inherit"] }
     );
     child.once("error", reject);
     child.once("exit", (code) => {
