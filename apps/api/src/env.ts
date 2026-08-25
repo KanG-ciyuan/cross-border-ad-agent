@@ -3,8 +3,8 @@ export interface Env {
   MEDIA: R2Bucket;
   APP_ENV: "local" | "test" | "preview" | "production";
   SESSION_PEPPER: string;
-  D1_DATABASE_NAME: string;
-  R2_BUCKET_NAME: string;
+  DECLARED_D1_DATABASE_NAME: string;
+  DECLARED_R2_BUCKET_NAME: string;
 }
 
 const appEnvironments = new Set<Env["APP_ENV"]>([
@@ -27,15 +27,19 @@ export function hasValidWorkerBindings(bindings: unknown): bindings is Env {
     candidate.SESSION_PEPPER.trim().length > 0 &&
     typeof candidate.APP_ENV === "string" &&
     appEnvironments.has(candidate.APP_ENV as Env["APP_ENV"]) &&
-    typeof candidate.D1_DATABASE_NAME === "string" &&
-    candidate.D1_DATABASE_NAME.trim().length > 0 &&
-    typeof candidate.R2_BUCKET_NAME === "string" &&
-    candidate.R2_BUCKET_NAME.trim().length > 0;
+    typeof candidate.DECLARED_D1_DATABASE_NAME === "string" &&
+    candidate.DECLARED_D1_DATABASE_NAME.trim().length > 0 &&
+    typeof candidate.DECLARED_R2_BUCKET_NAME === "string" &&
+    candidate.DECLARED_R2_BUCKET_NAME.trim().length > 0;
 
   if (!hasRequiredBindings) return false;
   if (candidate.APP_ENV === "production") return true;
 
-  return ![candidate.D1_DATABASE_NAME, candidate.R2_BUCKET_NAME].some(
+  // These labels are fail-fast configuration metadata, not cloud identity proof.
+  return ![
+    candidate.DECLARED_D1_DATABASE_NAME,
+    candidate.DECLARED_R2_BUCKET_NAME
+  ].some(
     (name) =>
       typeof name === "string" &&
       /(^|[-_.])prod(?:uction)?($|[-_.])/i.test(name)

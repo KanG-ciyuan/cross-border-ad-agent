@@ -10,8 +10,14 @@ const testEnv = {
   MEDIA: {} as R2Bucket,
   APP_ENV: "production" as const,
   SESSION_PEPPER: "test-only-pepper-not-a-real-secret",
-  D1_DATABASE_NAME: "ad-agent-production-db",
-  R2_BUCKET_NAME: "ad-agent-production-media"
+  DECLARED_D1_DATABASE_NAME: "ad-agent-production-db",
+  DECLARED_R2_BUCKET_NAME: "ad-agent-production-media"
+};
+const previewEnv = {
+  ...testEnv,
+  APP_ENV: "preview" as const,
+  DECLARED_D1_DATABASE_NAME: "ad-agent-preview-db",
+  DECLARED_R2_BUCKET_NAME: "ad-agent-preview-media"
 };
 const password = "Test-only-password-42";
 
@@ -84,6 +90,33 @@ describe("invite-only authentication", () => {
     expect(await attempt("missing@example.com", password)).toEqual(
       await attempt("owner@example.com", "wrong-test-password")
     );
+  });
+
+  it("sets a Secure session cookie when logging into preview", async () => {
+    const response = await createApp().fetch(
+      request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ email: "owner@example.com", password })
+      }),
+      previewEnv
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("Secure");
+  });
+
+  it("expires preview sessions with a Secure cookie", async () => {
+    const response = await createApp().fetch(
+      request("/api/auth/logout", {
+        method: "POST",
+        headers: { Origin: origin }
+      }),
+      previewEnv
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("Secure");
   });
 
   it("has no public registration, password-reset, or user-list route", async () => {

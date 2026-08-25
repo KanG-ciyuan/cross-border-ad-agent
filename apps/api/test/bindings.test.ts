@@ -38,8 +38,8 @@ const validBindings = {
   MEDIA: {} as R2Bucket,
   APP_ENV: "test" as const,
   SESSION_PEPPER: "test-only-pepper",
-  D1_DATABASE_NAME: "ad-agent-test-db",
-  R2_BUCKET_NAME: "ad-agent-test-media"
+  DECLARED_D1_DATABASE_NAME: "ad-agent-test-db",
+  DECLARED_R2_BUCKET_NAME: "ad-agent-test-media"
 };
 
 function requestWith(bindings: Record<string, unknown>) {
@@ -61,8 +61,11 @@ describe("Worker binding boundary", () => {
     });
   }
 
-  for (const binding of ["D1_DATABASE_NAME", "R2_BUCKET_NAME"] as const) {
-    it(`refuses non-production requests when ${binding} is missing`, async () => {
+  for (const binding of [
+    "DECLARED_D1_DATABASE_NAME",
+    "DECLARED_R2_BUCKET_NAME"
+  ] as const) {
+    it(`refuses requests when declared metadata ${binding} is missing`, async () => {
       const bindings: Record<string, unknown> = { ...validBindings };
       delete bindings[binding];
 
@@ -94,12 +97,12 @@ describe("Worker binding boundary", () => {
   );
 
   it.each(["local", "test", "preview"] as const)(
-    "refuses a production-named D1 target in %s",
+    "refuses production-named D1 declaration metadata in %s",
     async (APP_ENV) => {
       const response = await requestWith({
         ...validBindings,
         APP_ENV,
-        D1_DATABASE_NAME: "ad-agent-production-db"
+        DECLARED_D1_DATABASE_NAME: "ad-agent-production-db"
       });
 
       expect(response.status).toBe(500);
@@ -107,12 +110,12 @@ describe("Worker binding boundary", () => {
   );
 
   it.each(["local", "test", "preview"] as const)(
-    "refuses a production-named R2 target in %s",
+    "refuses production-named R2 declaration metadata in %s",
     async (APP_ENV) => {
       const response = await requestWith({
         ...validBindings,
         APP_ENV,
-        R2_BUCKET_NAME: "ad-agent-prod-media"
+        DECLARED_R2_BUCKET_NAME: "ad-agent-prod-media"
       });
 
       expect(response.status).toBe(500);
@@ -130,8 +133,8 @@ function expectIsolatedResourceDeclarations(
   const bucket = environment.r2_buckets.find(({ binding }) => binding === "MEDIA");
   expect(database).toBeDefined();
   expect(bucket).toBeDefined();
-  expect(environment.vars.D1_DATABASE_NAME).toBe(database?.database_name);
-  expect(environment.vars.R2_BUCKET_NAME).toBe(bucket?.bucket_name);
+  expect(environment.vars.DECLARED_D1_DATABASE_NAME).toBe(database?.database_name);
+  expect(environment.vars.DECLARED_R2_BUCKET_NAME).toBe(bucket?.bucket_name);
 
   const resourceIdentifiers = [
     database?.database_name,
@@ -161,9 +164,9 @@ describe("Wrangler resource isolation", () => {
       const environment = structuredClone(wranglerConfig.env.preview);
       environment.vars.APP_ENV = APP_ENV;
       environment.d1_databases[0]!.database_name = `ad-agent-${APP_ENV}-db`;
-      environment.vars.D1_DATABASE_NAME = `ad-agent-${APP_ENV}-db`;
+      environment.vars.DECLARED_D1_DATABASE_NAME = `ad-agent-${APP_ENV}-db`;
       environment.r2_buckets[0]!.bucket_name = `ad-agent-${APP_ENV}-media`;
-      environment.vars.R2_BUCKET_NAME = `ad-agent-${APP_ENV}-media`;
+      environment.vars.DECLARED_R2_BUCKET_NAME = `ad-agent-${APP_ENV}-media`;
       environment.d1_databases[0]!.database_id = "production-database-id";
 
       expect(() => expectIsolatedResourceDeclarations(environment, APP_ENV)).toThrow();
@@ -181,7 +184,7 @@ describe("Wrangler resource isolation", () => {
       directory: "../web/dist",
       binding: "ASSETS",
       not_found_handling: "single-page-application",
-      run_worker_first: ["/api/*"]
+      run_worker_first: ["/api", "/api/*"]
     });
   });
 });

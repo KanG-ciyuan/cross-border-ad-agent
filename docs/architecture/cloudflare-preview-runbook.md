@@ -28,15 +28,13 @@
    pnpm --filter @ad-agent/api exec wrangler d1 migrations apply DB --local
    ```
 
-3. 创建本地授权用户。脚本会在 TTY 中隐藏输入密码，使用当前 shell 的 `SESSION_PEPPER` 生成 PBKDF2 记录，临时 SQL 文件权限为 `0600` 并在写入后删除。不得使用 `--password` 参数，不得把密码或 hash 粘贴到命令行或日志。
+3. 创建本地授权用户。脚本会在 TTY 中隐藏输入密码，直接从 `apps/api/.dev.vars` 读取 `SESSION_PEPPER` 并生成 PBKDF2 记录，临时 SQL 文件权限为 `0600` 并在写入后删除。不得使用 `--password` 参数，不得把密码或 hash 粘贴到命令行或日志。
 
    ```bash
-   set -a
-   source apps/api/.dev.vars
-   set +a
-   node scripts/create-user.mjs --email operator@example.com
-   unset SESSION_PEPPER
+   env -u SESSION_PEPPER node --env-file=apps/api/.dev.vars scripts/create-user.mjs --email operator@example.com
    ```
+
+   Node.js 22 会以 dotenv 格式读取文件，不会像 shell `source` 那样求值或执行其中的元字符。`env -u SESSION_PEPPER` 会先移除 shell 中可能存在的同名值，确保用户创建脚本与 Wrangler 都从同一份 `apps/api/.dev.vars` 读取 pepper。命令和脚本均不应输出该值。
 
 4. 分别在两个终端启动 API 和 Web。Vite 会将 `/api` 代理到 `http://localhost:8787`。
 

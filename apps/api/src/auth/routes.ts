@@ -16,6 +16,10 @@ import {
 
 const INVALID_CREDENTIALS = { error: { code: "INVALID_CREDENTIALS" } } as const;
 
+function usesSecureSessionCookies(APP_ENV: Env["APP_ENV"]) {
+  return APP_ENV === "preview" || APP_ENV === "production";
+}
+
 function publicUser(user: { id: string; email: string; companyId: string }) {
   return { id: user.id, email: user.email, companyId: user.companyId };
 }
@@ -69,7 +73,7 @@ export function createAuthRoutes() {
     setCookie(context, SESSION_COOKIE, token, {
       path: "/",
       httpOnly: true,
-      secure: context.env.APP_ENV === "production",
+      secure: usesSecureSessionCookies(context.env.APP_ENV),
       sameSite: "Lax",
       maxAge: SESSION_TTL_SECONDS
     });
@@ -89,7 +93,7 @@ export function createAuthRoutes() {
     }
     deleteCookie(context, SESSION_COOKIE, {
       path: "/",
-      secure: context.env.APP_ENV === "production"
+      secure: usesSecureSessionCookies(context.env.APP_ENV)
     });
     return context.json({ ok: true });
   });

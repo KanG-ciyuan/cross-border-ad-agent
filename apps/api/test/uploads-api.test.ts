@@ -12,8 +12,8 @@ const bindings = {
   MEDIA: env.MEDIA,
   APP_ENV: "test" as const,
   SESSION_PEPPER: "test-only-pepper",
-  D1_DATABASE_NAME: "ad-agent-test-db",
-  R2_BUCKET_NAME: "ad-agent-test-media"
+  DECLARED_D1_DATABASE_NAME: "ad-agent-test-db",
+  DECLARED_R2_BUCKET_NAME: "ad-agent-test-media"
 };
 
 async function seedTask() {
