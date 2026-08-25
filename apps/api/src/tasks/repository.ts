@@ -689,6 +689,7 @@ export class TaskRepository {
       versionNumber: number;
       editPlan: unknown;
       renderReceipt: unknown;
+      outputAssetId?: string;
       createdAt: number;
     };
     provider: string;
@@ -700,9 +701,10 @@ export class TaskRepository {
         `INSERT INTO task_versions (
           id, task_id, version_number, edit_plan_json, render_receipt_json,
           output_asset_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).bind(input.version.id, input.taskId, input.version.versionNumber,
-        JSON.stringify(input.version.editPlan), JSON.stringify(input.version.renderReceipt), input.version.createdAt),
+        JSON.stringify(input.version.editPlan), JSON.stringify(input.version.renderReceipt),
+        input.version.outputAssetId ?? null, input.version.createdAt),
       this.db.prepare(
         `UPDATE step_attempts SET status = 'completed', provider = ?, result_json = ?, updated_at = ?
          WHERE id = ? AND task_id = ? AND status = 'queued'

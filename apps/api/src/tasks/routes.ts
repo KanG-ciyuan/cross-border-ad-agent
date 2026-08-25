@@ -5,6 +5,7 @@ import type { Env } from "../env";
 import { getAuthenticatedUser, isSameOrigin } from "../auth/session";
 import { FakeAnalysisProvider } from "../providers/fake-analysis";
 import { FakeRenderProvider } from "../providers/fake-renderer";
+import { HttpRenderProvider } from "../providers/http-renderer";
 import { TaskRepository, type TaskRecord } from "./repository";
 
 function error(code: string, message: string, retryable = false) {
@@ -267,11 +268,48 @@ export function createTaskRoutes() {
       const latestVersion = (await repository.listVersions(task.id, access.user.id))[0];
       if (!latestVersion) throw new Error("EDIT_PLAN_MISSING");
       const plan = EditPlanV1.parse(latestVersion.editPlan);
-      const receipt = await new FakeRenderProvider().render(plan);
+      const outputAssetId = `ast_${crypto.randomUUID()}`;
+      let receipt;
+      let outputObjectKey: string | undefined;
+      if (context.env.RENDERER_BASE_URL?.trim()) {
+        const assets = await repository.listAssetsForTask(task.id, access.user.id);
+        const sources = await Promise.all(assets.filter((asset) => asset.kind === "source_video").map(async (asset) => {
+          const object = await context.env.MEDIA.get(asset.objectKey);
+          if (!object) throw new Error("SOURCE_ASSET_MISSING");
+          return {
+            assetId: asset.id,
+            mimeType: asset.mimeType,
+            filename: asset.originalFilename,
+            bytes: await object.arrayBuffer()
+          };
+        }));
+        const taskInput = TaskCreateInput.parse(task.input);
+        const text = taskInput.goal === "edit_only" ? taskInput.editInstructions ?? "" : taskInput.product.approvedClaims[0] ?? "";
+        const cta = taskInput.goal === "complete_creation" ? taskInput.product.callToAction ?? "" : "";
+        const rendered = await new HttpRenderProvider({ baseUrl: context.env.RENDERER_BASE_URL }).render({
+          plan, outputAssetId, title: task.title, caption: text, cta, sources
+        });
+        outputObjectKey = `outputs/${task.id}/${crypto.randomUUID()}.mp4`;
+        await context.env.MEDIA.put(outputObjectKey, rendered.bytes, {
+          httpMetadata: { contentType: "video/mp4" },
+          customMetadata: { assetId: outputAssetId, taskId: task.id }
+        });
+        await repository.saveAsset({
+          id: outputAssetId, taskId: task.id, companyId: access.user.companyId,
+          kind: "rendered_video", objectKey: outputObjectKey,
+          originalFilename: `${task.title.slice(0, 80)}-v${latestVersion.versionNumber + 1}.mp4`,
+          mimeType: "video/mp4", sizeBytes: rendered.bytes.byteLength,
+          origin: "derived", metadata: { provider: "ffmpeg_renderer" }, createdAt: Date.now()
+        });
+        receipt = rendered.receipt;
+      } else {
+        receipt = await new FakeRenderProvider().render(plan);
+      }
       await repository.completeRender({ attemptId: reservation.attemptId, taskId: task.id,
-        userId: access.user.id, provider: "fake_renderer", amountFen: plan.cost.estimatedFen,
+        userId: access.user.id, provider: receipt.provider, amountFen: plan.cost.estimatedFen,
         version: { id: `ver_${crypto.randomUUID()}`, versionNumber: latestVersion.versionNumber + 1,
-          editPlan: plan, renderReceipt: receipt, createdAt: Date.now() }, updatedAt: Date.now() });
+          editPlan: plan, renderReceipt: receipt,
+          outputAssetId: outputObjectKey ? outputAssetId : undefined, createdAt: Date.now() }, updatedAt: Date.now() });
       return context.json({ attemptId: reservation.attemptId }, 202);
     } catch {
       await repository.failRenderAttempt({ attemptId: reservation.attemptId, taskId: task.id,

@@ -8,6 +8,7 @@ export interface Env {
   MINIMAX_API_KEY?: string;
   MINIMAX_BASE_URL?: string;
   MINIMAX_MODEL_ID?: string;
+  RENDERER_BASE_URL?: string;
   VIDEO_GENERATION_PROVIDER?: "minimax" | "seedance";
   DECLARED_D1_DATABASE_NAME: string;
   DECLARED_R2_BUCKET_NAME: string;

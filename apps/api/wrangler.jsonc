@@ -17,6 +17,7 @@
     "VIDEO_GENERATION_PROVIDER": "minimax",
     "MINIMAX_BASE_URL": "https://api.minimaxi.com",
     "MINIMAX_MODEL_ID": "MiniMax-H3",
+    "RENDERER_BASE_URL": "http://127.0.0.1:8790",
     "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
     "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-local-db",
     "DECLARED_R2_BUCKET_NAME": "cross-border-ad-agent-local-media"

@@ -305,6 +305,50 @@ describe("task API", () => {
     expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(1);
   });
 
+  it("stores a real renderer MP4 as the output asset of a new version", async () => {
+    const create = await createApp().fetch(apiRequest("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        goal: "edit_only", market: "ID", platform: "tiktok",
+        editInstructions: "Pertahankan perbandingan sebelum dan sesudah.",
+        allowedOperations: ["trim", "concat", "captions", "transitions"]
+      })
+    }), bindings);
+    const taskId = ((await create.json()) as { task: { id: string } }).task.id;
+    const repository = new TaskRepository(env.DB);
+    await repository.updateTaskStatus(taskId, "usr_owner", "ready_to_render", Date.now());
+    await repository.saveAsset({
+      id: "ast_video001", taskId, companyId: "cmp_acme", kind: "source_video",
+      objectKey: "assets/source-video", originalFilename: "source.mp4", mimeType: "video/mp4",
+      sizeBytes: 12, origin: "user_upload", metadata: {}, createdAt: Date.now()
+    });
+    await env.MEDIA.put("assets/source-video", new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112, 0, 0, 0, 0]));
+    await seedEditPlan(repository, taskId);
+    const renderedMp4 = new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112, 109, 112, 52, 50]);
+    const rendererFetch = vi.fn().mockResolvedValue(new Response(renderedMp4, {
+      status: 200, headers: { "Content-Type": "video/mp4" }
+    }));
+    vi.stubGlobal("fetch", rendererFetch);
+
+    const response = await createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "real-render" }, body: "{}"
+    }), { ...bindings, RENDERER_BASE_URL: "http://127.0.0.1:8790" });
+
+    expect(response.status).toBe(202);
+    expect(rendererFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8790/render",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) })
+    );
+    const versions = await repository.listVersions(taskId, "usr_owner");
+    expect(versions).toHaveLength(2);
+    expect(versions[0]?.outputAssetId).toMatch(/^ast_/);
+    const assets = await repository.listAssetsForTask(taskId, "usr_owner");
+    const output = assets.find((asset) => asset.id === versions[0]?.outputAssetId);
+    expect(output).toMatchObject({ kind: "rendered_video", mimeType: "video/mp4", origin: "derived" });
+    expect(await env.MEDIA.get(output!.objectKey)).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it("does not execute rendering when another request already reserved the same key", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },

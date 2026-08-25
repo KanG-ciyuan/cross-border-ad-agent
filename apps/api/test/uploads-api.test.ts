@@ -129,4 +129,25 @@ describe("asset upload API", () => {
     }), bindings);
     expect(response.status).toBe(411);
   });
+
+  it("streams an authenticated rendered video as a download", async () => {
+    const repository = new TaskRepository(env.DB);
+    await repository.saveAsset({
+      id: "ast_output01", taskId: "tsk_upload01", companyId: "cmp_acme",
+      kind: "rendered_video", objectKey: "outputs/output.mp4", originalFilename: "ad-v2.mp4",
+      mimeType: "video/mp4", sizeBytes: 12, origin: "derived", metadata: {}, createdAt: Date.now()
+    });
+    const bytes = new Uint8Array([0, 0, 0, 8, 102, 116, 121, 112, 109, 112, 52, 50]);
+    await env.MEDIA.put("outputs/output.mp4", bytes);
+
+    const response = await createApp().fetch(new Request(
+      `${origin}/api/tasks/tsk_upload01/assets/ast_output01`,
+      { headers: { Cookie: `ad_session=${token}` } }
+    ), bindings);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+    expect(response.headers.get("Content-Disposition")).toContain('filename="ad-v2.mp4"');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
 });

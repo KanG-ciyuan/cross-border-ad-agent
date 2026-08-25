@@ -33,6 +33,29 @@ function decodeFilename(value: string): string {
 export function createUploadRoutes() {
   const routes = new Hono<{ Bindings: Env }>();
 
+  routes.get("/:taskId/assets/:assetId", async (context) => {
+    const user = await getAuthenticatedUser(context);
+    if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
+    const assets = await new TaskRepository(context.env.DB).listAssetsForTask(
+      context.req.param("taskId"), user.id
+    );
+    const asset = assets.find((candidate) => candidate.id === context.req.param("assetId"));
+    if (!asset || asset.kind !== "rendered_video") {
+      return context.json(error("NOT_FOUND", "Rendered video not found"), 404);
+    }
+    const object = await context.env.MEDIA.get(asset.objectKey);
+    if (!object) return context.json(error("NOT_FOUND", "Rendered video not found"), 404);
+    const fallback = asset.originalFilename.replace(/[^A-Za-z0-9._-]/g, "_");
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": asset.mimeType,
+        "Content-Length": String(asset.sizeBytes),
+        "Content-Disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(asset.originalFilename)}`,
+        "Cache-Control": "private, no-store"
+      }
+    });
+  });
+
   routes.post("/:taskId/assets", async (context) => {
     if (!isSameOrigin(context.req.raw)) return context.json(error("FORBIDDEN", "Request denied"), 403);
     const user = await getAuthenticatedUser(context);
