@@ -64,6 +64,7 @@ const completeCreationInput = z.strictObject({
 const editOnlyInput = z.strictObject({
   ...baseTaskFields,
   goal: z.literal("edit_only"),
+  editInstructions: z.string().trim().min(1).max(1000).optional(),
   allowedOperations: z.array(AllowedOperation).min(1)
 }).superRefine((input, context) => {
   if (new Set(input.allowedOperations).size !== input.allowedOperations.length) {

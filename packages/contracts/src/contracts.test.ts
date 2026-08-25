@@ -8,11 +8,29 @@ describe("TaskCreateInput", () => {
       goal: "edit_only",
       market: "ID",
       platform: "tiktok",
+      editInstructions: "Keep the product-use sequence and cut to 9:16.",
       allowedOperations: ["trim", "concat", "captions"]
     });
 
     expect(task.goal).toBe("edit_only");
+    if (task.goal !== "edit_only") {
+      throw new Error("Expected an edit-only task");
+    }
+    expect(task.editInstructions).toBe("Keep the product-use sequence and cut to 9:16.");
   });
+
+  it.each(["", " ".repeat(4), "x".repeat(1_001)])(
+    "rejects empty or oversized edit instructions",
+    (editInstructions) => {
+      expect(() => TaskCreateInput.parse({
+        goal: "edit_only",
+        market: "ID",
+        platform: "tiktok",
+        editInstructions,
+        allowedOperations: ["trim"]
+      })).toThrow();
+    }
+  );
 
   it.each([
     { referenceGeneration: ["three_view"] },
@@ -23,6 +41,7 @@ describe("TaskCreateInput", () => {
       goal: "edit_only",
       market: "ID",
       platform: "tiktok",
+      editInstructions: "Use only the supplied footage.",
       allowedOperations: ["trim"],
       ...forbidden
     })).toThrow();
