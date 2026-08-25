@@ -165,6 +165,16 @@ export function canUseDemoBypass(search: string, isDevelopment: boolean) {
   return isDevelopment && new URLSearchParams(search).get("demo") === "1";
 }
 
+export function loginErrorMessage(reason: unknown) {
+  if (reason instanceof Error && reason.message === "INVALID_CREDENTIALS") {
+    return "邮箱或密码不正确";
+  }
+  if (reason instanceof Error && reason.message === "CROSS_ORIGIN_REQUEST") {
+    return "本地连接配置异常，请刷新后重试";
+  }
+  return "登录失败，请稍后重试";
+}
+
 function SessionBoundary() {
   const simulation = canUseDemoBypass(window.location.search, import.meta.env.DEV);
   const [user, setUser] = useState<SessionUser | null>(simulation ? { id: "demo", email: "rina@company.com", companyId: "demo" } : null);
@@ -177,7 +187,7 @@ function SessionBoundary() {
   if (checking) return <main className="login-page"><div className="login-panel"><h1>正在连接本地 API</h1><p>正在检查公司授权会话。</p></div></main>;
   if (!user) return <LoginPage status="idle" error={error} onLogin={async (input) => {
     try { const result = await login(input); setUser(result.user); setError(undefined); }
-    catch { setError("邮箱或密码不正确"); }
+    catch (reason) { setError(loginErrorMessage(reason)); }
   }} />;
   return <Workbench user={user} simulation={simulation} />;
 }

@@ -1,13 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { AppRouter, canUseDemoBypass } from "./router";
+import { AppRouter, canUseDemoBypass, loginErrorMessage } from "./router";
 
 describe("AppRouter", () => {
   it("allows the public demo query only in Vite development", () => {
     expect(canUseDemoBypass("?demo=1", true)).toBe(true);
     expect(canUseDemoBypass("?demo=1", false)).toBe(false);
     expect(canUseDemoBypass("?demo=0", true)).toBe(false);
+  });
+
+  it("does not report a blocked same-origin request as a wrong password", () => {
+    expect(loginErrorMessage(new Error("CROSS_ORIGIN_REQUEST"))).toBe("本地连接配置异常，请刷新后重试");
+    expect(loginErrorMessage(new Error("INVALID_CREDENTIALS"))).toBe("邮箱或密码不正确");
+    expect(loginErrorMessage(new Error("请求失败"))).toBe("登录失败，请稍后重试");
   });
 
   it("opens the matching task review after generation approval", async () => {
