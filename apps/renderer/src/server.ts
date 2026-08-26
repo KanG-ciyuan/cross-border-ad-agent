@@ -92,9 +92,9 @@ async function handleRender(request: IncomingMessage) {
     const captionOverlay = join(workspace, "caption.ppm");
     const ctaOverlay = join(workspace, "cta.ppm");
     await Promise.all([
-      writeFile(titleOverlay, renderTextPpm({ text: manifest.title, width: 920, height: 120, scale: 8 })),
-      writeFile(captionOverlay, renderTextPpm({ text: manifest.caption, width: 940, height: 210, scale: 6 })),
-      writeFile(ctaOverlay, renderTextPpm({ text: manifest.cta || "LIHAT SEKARANG", width: 820, height: 180, scale: 8, background: [22, 130, 79] }))
+      writeFile(titleOverlay, renderTextPpm({ text: manifest.title, width: 760, height: 86, scale: 6 })),
+      writeFile(captionOverlay, renderTextPpm({ text: manifest.caption, width: 820, height: 142, scale: 5 })),
+      writeFile(ctaOverlay, renderTextPpm({ text: manifest.cta, width: 650, height: 100, scale: 6 }))
     ]);
     const outputPath = join(workspace, "output.mp4");
     await renderFinalVideo({

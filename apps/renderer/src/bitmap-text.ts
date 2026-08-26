@@ -29,7 +29,7 @@ function linesFor(text: string, maxCharacters: number) {
     if (!current || current.length + 1 + word.length > maxCharacters) lines.push(word.slice(0, maxCharacters));
     else lines[lines.length - 1] = `${current} ${word}`;
   }
-  return lines.slice(0, 2).length ? lines.slice(0, 2) : ["ADFLOW"];
+  return lines.slice(0, 2);
 }
 
 export function renderTextPpm(input: {

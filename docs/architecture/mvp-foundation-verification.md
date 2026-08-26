@@ -22,6 +22,8 @@ This report covers local acceptance only. It is not evidence of production readi
 - The end-to-end output stored in local R2 was verified with FFprobe as H.264 video plus AAC audio, `1080x1920`, `30 fps`, `3.76` seconds, and `104691` bytes. The review and version pages rendered the authenticated MP4 without console errors in a fresh browser tab.
 - Local FFmpeg `8.1.1` does not include `drawtext`. The renderer therefore creates portable PPM bitmap overlays in Node and uses FFmpeg `overlay`, while transitions use `xfade` and `acrossfade`. This first overlay implementation supports basic ASCII Indonesian and English copy; its typography is intentionally a baseline, not final campaign styling.
 - The Worker-to-renderer integration preserves stable, secret-safe failure codes. Browser verification exposed and fixed a Cloudflare native `fetch` receiver error, and also verified that `failed_retryable` edit-only tasks expose the automatic-editing action again.
+- Edit-only analysis now builds six alternating uploaded-video clips of approximately 5.2 seconds each, producing a roughly 30-second timeline instead of taking only one short segment from each file.
+- When edit-only copy is not explicitly supplied as approved product copy, the renderer does not turn internal editing instructions into subtitles, titles, or CTAs. Existing text baked into the uploaded footage remains part of the source video.
 
 ## Simulated boundaries
 
@@ -54,6 +56,7 @@ This report covers local acceptance only. It is not evidence of production readi
 - Live MiniMax/Seedance execution and output persistence, TTS, real image generation, Remotion rendering, Jianying automation, TikTok publishing, and provider concurrency are not verified.
 - Real FFmpeg rendering is verified only on the current local machine. Cloudflare Workers remain the request/orchestration layer; a remotely deployed renderer or Cloudflare Container has not been provisioned or verified.
 - The bitmap subtitle renderer currently strips non-ASCII characters and uses a fixed 5x7 font. Campaign-quality Indonesian typography, brand fonts, word wrapping, animated stickers, music, voiceover, and intelligent shot selection remain future work.
+- The current 30-second real-material verification preserves the source Chinese audio. Indonesian dubbing requires a separate transcription, translation approval, and TTS replacement step; it is not inferred from internal edit instructions.
 - No credentials were read, displayed, moved, replaced, or committed.
 
 ## Commands

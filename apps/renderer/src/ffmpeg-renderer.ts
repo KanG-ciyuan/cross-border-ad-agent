@@ -125,7 +125,7 @@ export function buildFinalFfmpegArgs(input: {
   }
   const overlayStart = input.normalizedInputs.length;
   filters.push(
-    `[${overlayStart}:v]format=rgba[title];[${overlayStart + 1}:v]format=rgba[caption];[${overlayStart + 2}:v]format=rgba[cta];` +
+    `[${overlayStart}:v]format=rgba,colorkey=black:0.12:0.0[title];[${overlayStart + 1}:v]format=rgba,colorkey=black:0.12:0.0[caption];[${overlayStart + 2}:v]format=rgba,colorkey=black:0.12:0.0[cta];` +
     `[${videoLabel}][title]overlay=x=(W-w)/2:y=80[vtitle];` +
     `[vtitle][caption]overlay=x=(W-w)/2:y=H-h-140[vcaption];` +
     `[vcaption][cta]overlay=x=(W-w)/2:y=(H-h)/2:enable='gte(t,${Math.max(0, elapsed - 2).toFixed(3)})'[vout]`

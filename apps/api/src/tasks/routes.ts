@@ -288,10 +288,10 @@ export function createTaskRoutes() {
           };
         }));
         const taskInput = TaskCreateInput.parse(task.input);
-        const text = taskInput.goal === "edit_only" ? taskInput.editInstructions ?? "" : taskInput.product.approvedClaims[0] ?? "";
+        const text = taskInput.goal === "complete_creation" ? taskInput.product.approvedClaims[0] ?? "" : "";
         const cta = taskInput.goal === "complete_creation" ? taskInput.product.callToAction ?? "" : "";
         const rendered = await new HttpRenderProvider({ baseUrl: context.env.RENDERER_BASE_URL }).render({
-          plan, outputAssetId, title: task.title, caption: text, cta, sources
+          plan, outputAssetId, title: taskInput.goal === "edit_only" ? "" : task.title, caption: text, cta, sources
         });
         outputObjectKey = `outputs/${task.id}/${crypto.randomUUID()}.mp4`;
         await context.env.MEDIA.put(outputObjectKey, rendered.bytes, {

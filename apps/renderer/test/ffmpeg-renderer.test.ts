@@ -41,6 +41,7 @@ describe("FFmpeg renderer", () => {
     expect(args).toContain("1080:1920");
     expect(args.join(" ")).toContain("xfade=transition=fade");
     expect(args.join(" ")).toContain("overlay=x=(W-w)/2:y=80");
+    expect(args.join(" ")).toContain("colorkey=black");
     expect(args).toContain("/tmp/caption.ppm");
     expect(args.at(-1)).toBe("/tmp/output.mp4");
   });

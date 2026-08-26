@@ -89,14 +89,22 @@ export class FakeAnalysisProvider implements AnalysisProvider {
   }
 
   private editOnly(input: AnalysisInput): AnalysisResult {
-    const clips = input.assets.map((asset, index) => ({
-      id: `clp_edit${String(index + 1).padStart(4, "0")}`,
-      assetId: asset.id,
-      startMs: index * 3_000,
-      endMs: (index + 1) * 3_000,
-      origin: "uploaded" as const,
-      transition: input.allowedOperations.includes("transitions") ? "crossfade" as const : "cut" as const
-    }));
+    const clipDurationMs = 5_208;
+    const sourceWindowMs = 15_000;
+    const clipCount = 6;
+    const clips = Array.from({ length: clipCount }, (_, index) => {
+      const asset = input.assets[index % input.assets.length]!;
+      const sourcePass = Math.floor(index / input.assets.length);
+      const startMs = sourcePass * sourceWindowMs;
+      return {
+        id: `clp_edit${String(index + 1).padStart(4, "0")}`,
+        assetId: asset.id,
+        startMs,
+        endMs: startMs + clipDurationMs,
+        origin: "uploaded" as const,
+        transition: input.allowedOperations.includes("transitions") ? "crossfade" as const : "cut" as const
+      };
+    });
     const estimateFen = 300;
     const editPlan = EditPlanV1.parse({
       version: "edit_plan.v1",

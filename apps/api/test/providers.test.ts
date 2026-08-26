@@ -82,6 +82,30 @@ describe("FakeAnalysisProvider", () => {
     );
     expect(JSON.stringify(result)).not.toContain('"origin":"generated"');
   });
+
+  it("builds a 30-second alternating edit-only timeline from uploaded videos", async () => {
+    const result = await new FakeAnalysisProvider().analyze({
+      taskId: "tsk_editonly30",
+      goal: "edit_only",
+      market: "ID",
+      platform: "tiktok",
+      assets: [
+        { id: "ast_video001", kind: "source_video" },
+        { id: "ast_video002", kind: "source_video" }
+      ],
+      allowedOperations: ["trim", "concat", "captions", "transitions"],
+      referenceGeneration: [],
+      costLimitFen: 5_000
+    });
+    const clips = result.editPlan.tracks[0]?.clips ?? [];
+    expect(clips).toHaveLength(6);
+    expect(clips.map((clip) => clip.assetId)).toEqual([
+      "ast_video001", "ast_video002", "ast_video001", "ast_video002", "ast_video001", "ast_video002"
+    ]);
+    expect(clips.map((clip) => [clip.startMs, clip.endMs])).toEqual([
+      [0, 5_208], [0, 5_208], [15_000, 20_208], [15_000, 20_208], [30_000, 35_208], [30_000, 35_208]
+    ]);
+  });
 });
 
 describe("FakeRenderProvider", () => {

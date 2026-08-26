@@ -346,6 +346,12 @@ describe("task API", () => {
       "http://127.0.0.1:8790/render",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) })
     );
+    const renderForm = rendererFetch.mock.calls[0]?.[1]?.body as FormData;
+    expect(JSON.parse(String(renderForm.get("manifest")))).toMatchObject({
+      title: "",
+      caption: "",
+      cta: ""
+    });
     const versions = await repository.listVersions(taskId, "usr_owner");
     expect(versions).toHaveLength(2);
     expect(versions[0]?.outputAssetId).toMatch(/^ast_/);
