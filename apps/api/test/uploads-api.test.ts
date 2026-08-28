@@ -150,4 +150,25 @@ describe("asset upload API", () => {
     expect(response.headers.get("Content-Disposition")).toContain('filename="ad-v2.mp4"');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
+
+  it("streams an authenticated product image inline for the real canvas preview", async () => {
+    const repository = new TaskRepository(env.DB);
+    await repository.saveAsset({
+      id: "ast_product01", taskId: "tsk_upload01", companyId: "cmp_acme",
+      kind: "product_image", objectKey: "assets/product.png", originalFilename: "产品正面.png",
+      mimeType: "image/png", sizeBytes: 4, origin: "user_upload", metadata: {}, createdAt: Date.now()
+    });
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await env.MEDIA.put("assets/product.png", bytes);
+
+    const response = await createApp().fetch(new Request(
+      `${origin}/api/tasks/tsk_upload01/assets/ast_product01`,
+      { headers: { Cookie: `ad_session=${token}` } }
+    ), bindings);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(response.headers.get("Content-Disposition")).toContain("inline");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
 });

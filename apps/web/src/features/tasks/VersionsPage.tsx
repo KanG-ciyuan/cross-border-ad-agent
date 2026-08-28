@@ -1,5 +1,5 @@
 import type { TaskStatus } from "@ad-agent/contracts";
-import { Download } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 
 interface VersionItem {
   id: string;
@@ -9,20 +9,21 @@ interface VersionItem {
   createdAt: number;
 }
 
-export function VersionsPage({ taskId, taskTitle, status, costFen, versions, onReview }: {
+export function VersionsPage({ taskId, taskTitle, status, costFen, versions, onReview, onBack }: {
   taskId: string;
   taskTitle: string;
   status: TaskStatus;
   costFen: number;
   versions: VersionItem[];
   onReview: () => void;
+  onBack?: () => void;
 }) {
   const latestOutput = versions.find((version) => version.outputAssetId);
   const latestOutputUrl = latestOutput?.outputAssetId
     ? `/api/tasks/${taskId}/assets/${latestOutput.outputAssetId}`
     : undefined;
   return <section className="page-section">
-    <header className="page-heading"><div><h1>成品与版本</h1><p>{taskTitle} · 保留每次生成和审核记录。</p></div></header>
+    <header className="page-heading"><div><h1>成品与版本</h1><p>{taskTitle} · 保留每次生成和审核记录。</p></div>{onBack ? <button className="button" onClick={onBack}><ArrowLeft size={16} />返回任务列表</button> : null}</header>
     {latestOutputUrl ? <section className="output-preview" aria-label="真实 MP4 成品">
       <div><strong>真实 MP4 成品</strong><span>V{latestOutput?.versionNumber} · 9:16 竖屏</span></div>
       <video aria-label={`V${latestOutput?.versionNumber} 视频预览`} controls playsInline preload="metadata" src={latestOutputUrl} />

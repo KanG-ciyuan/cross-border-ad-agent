@@ -91,6 +91,43 @@ interface VersionRow {
   created_at: number;
 }
 
+interface AnalysisMapRow {
+  id: string;
+  task_id: string;
+  version_number: number;
+  analysis_map_json: string;
+  created_at: number;
+}
+
+interface ProductAnalysisRow {
+  id: string;
+  task_id: string;
+  source_asset_id: string;
+  version_number: number;
+  analysis_json: string;
+  created_at: number;
+}
+
+interface RevisionRequestRow {
+  id: string;
+  task_id: string;
+  user_id: string;
+  instruction: string;
+  base_version_number: number;
+  created_at: number;
+}
+
+interface UsageRecordRow {
+  id: string;
+  task_id: string;
+  attempt_id: string | null;
+  provider: string;
+  operation: string;
+  calls: number;
+  actual_amount_fen: number | null;
+  created_at: number;
+}
+
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
@@ -120,6 +157,179 @@ function mapTask(row: TaskRow): TaskRecord {
 
 export class TaskRepository {
   constructor(private readonly db: D1Database) {}
+
+  async saveProductAnalysis(input: {
+    id: string;
+    taskId: string;
+    sourceAssetId: string;
+    versionNumber: number;
+    analysis: unknown;
+    createdAt: number;
+  }): Promise<void> {
+    await this.db.prepare(
+      `INSERT INTO product_analyses (
+        id, task_id, source_asset_id, version_number, analysis_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(
+      input.id,
+      input.taskId,
+      input.sourceAssetId,
+      input.versionNumber,
+      JSON.stringify(input.analysis),
+      input.createdAt
+    ).run();
+  }
+
+  async getLatestProductAnalysis(taskId: string, userId: string) {
+    const row = await this.db.prepare(
+      `SELECT p.id, p.task_id, p.source_asset_id, p.version_number,
+        p.analysis_json, p.created_at
+       FROM product_analyses p
+       INNER JOIN tasks t ON t.id = p.task_id
+       WHERE p.task_id = ? AND t.user_id = ?
+       ORDER BY p.version_number DESC LIMIT 1`
+    ).bind(taskId, userId).first<ProductAnalysisRow>();
+
+    return row ? {
+      id: row.id,
+      taskId: row.task_id,
+      sourceAssetId: row.source_asset_id,
+      versionNumber: row.version_number,
+      analysis: parseJson<unknown>(row.analysis_json),
+      createdAt: row.created_at
+    } : null;
+  }
+
+  async saveAnalysisMap(input: {
+    id: string;
+    taskId: string;
+    versionNumber: number;
+    analysisMap: unknown;
+    createdAt: number;
+  }): Promise<void> {
+    await this.db.prepare(
+      `INSERT INTO analysis_maps (
+        id, task_id, version_number, analysis_map_json, created_at
+      ) VALUES (?, ?, ?, ?, ?)`
+    ).bind(
+      input.id,
+      input.taskId,
+      input.versionNumber,
+      JSON.stringify(input.analysisMap),
+      input.createdAt
+    ).run();
+  }
+
+  async getLatestAnalysisMap(taskId: string, userId: string) {
+    const row = await this.db.prepare(
+      `SELECT m.id, m.task_id, m.version_number, m.analysis_map_json, m.created_at
+       FROM analysis_maps m
+       INNER JOIN tasks t ON t.id = m.task_id
+       WHERE m.task_id = ? AND t.user_id = ?
+       ORDER BY m.version_number DESC LIMIT 1`
+    ).bind(taskId, userId).first<AnalysisMapRow>();
+
+    return row ? {
+      id: row.id,
+      taskId: row.task_id,
+      versionNumber: row.version_number,
+      analysisMap: parseJson<unknown>(row.analysis_map_json),
+      createdAt: row.created_at
+    } : null;
+  }
+
+  async saveRevisionRequest(input: {
+    id: string;
+    taskId: string;
+    userId: string;
+    instruction: string;
+    baseVersionNumber: number;
+    createdAt: number;
+  }): Promise<void> {
+    await this.db.prepare(
+      `INSERT INTO revision_requests (
+        id, task_id, user_id, instruction, base_version_number, created_at
+      ) SELECT ?, t.id, ?, ?, ?, ? FROM tasks t
+        WHERE t.id = ? AND t.user_id = ?`
+    ).bind(
+      input.id,
+      input.userId,
+      input.instruction,
+      input.baseVersionNumber,
+      input.createdAt,
+      input.taskId,
+      input.userId
+    ).run();
+  }
+
+  async listRevisionRequests(taskId: string, userId: string) {
+    const result = await this.db.prepare(
+      `SELECT r.id, r.task_id, r.user_id, r.instruction,
+        r.base_version_number, r.created_at
+       FROM revision_requests r
+       INNER JOIN tasks t ON t.id = r.task_id
+       WHERE r.task_id = ? AND t.user_id = ?
+       ORDER BY r.created_at DESC, r.id DESC`
+    ).bind(taskId, userId).all<RevisionRequestRow>();
+
+    return result.results.map((row) => ({
+      id: row.id,
+      taskId: row.task_id,
+      userId: row.user_id,
+      instruction: row.instruction,
+      baseVersionNumber: row.base_version_number,
+      createdAt: row.created_at
+    }));
+  }
+
+  async saveUsageRecord(input: {
+    id: string;
+    taskId: string;
+    attemptId?: string;
+    provider: string;
+    operation: string;
+    calls: number;
+    actualAmountFen?: number;
+    createdAt: number;
+  }): Promise<void> {
+    await this.db.prepare(
+      `INSERT INTO usage_records (
+        id, task_id, attempt_id, provider, operation, calls,
+        actual_amount_fen, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      input.id,
+      input.taskId,
+      input.attemptId ?? null,
+      input.provider,
+      input.operation,
+      input.calls,
+      input.actualAmountFen ?? null,
+      input.createdAt
+    ).run();
+  }
+
+  async listUsageRecords(taskId: string, userId: string) {
+    const result = await this.db.prepare(
+      `SELECT u.id, u.task_id, u.attempt_id, u.provider, u.operation,
+        u.calls, u.actual_amount_fen, u.created_at
+       FROM usage_records u
+       INNER JOIN tasks t ON t.id = u.task_id
+       WHERE u.task_id = ? AND t.user_id = ?
+       ORDER BY u.created_at DESC, u.id DESC`
+    ).bind(taskId, userId).all<UsageRecordRow>();
+
+    return result.results.map((row) => ({
+      id: row.id,
+      taskId: row.task_id,
+      attemptId: row.attempt_id,
+      provider: row.provider,
+      operation: row.operation,
+      calls: row.calls,
+      actualAmountFen: row.actual_amount_fen,
+      createdAt: row.created_at
+    }));
+  }
 
   async createTask(input: {
     id: string;
@@ -427,8 +637,8 @@ export class TaskRepository {
     userId: string;
     companyId: string;
     key: string;
-    kind: "content" | "final";
-    action: "approve_content" | "approve_final";
+    kind: "preview" | "content" | "final";
+    action: "approve_preview" | "approve_content" | "approve_final";
     expectedStatus: string;
     nextStatus: string;
     createdAt: number;
@@ -660,6 +870,22 @@ export class TaskRepository {
     return result.meta.changes === 1;
   }
 
+  async failStepAttempt(input: {
+    attemptId: string;
+    taskId: string;
+    userId: string;
+    errorCode: string;
+    updatedAt: number;
+  }): Promise<boolean> {
+    const result = await this.db.prepare(
+      `UPDATE step_attempts SET status = 'failed', error_code = ?, updated_at = ?
+       WHERE id = ? AND task_id = ? AND status = 'queued'
+       AND EXISTS (SELECT 1 FROM tasks WHERE id = ? AND user_id = ?)`
+    ).bind(input.errorCode, input.updatedAt, input.attemptId, input.taskId,
+      input.taskId, input.userId).run();
+    return result.meta.changes === 1;
+  }
+
   async failRenderAttempt(input: {
     attemptId: string;
     taskId: string;
@@ -694,6 +920,7 @@ export class TaskRepository {
     };
     provider: string;
     amountFen: number;
+    nextStatus?: string;
     updatedAt: number;
   }): Promise<void> {
     await this.db.batch([
@@ -718,10 +945,10 @@ export class TaskRepository {
       ).bind(`cost_${crypto.randomUUID()}`, input.taskId, input.attemptId,
         input.provider, input.amountFen, input.updatedAt),
       this.db.prepare(
-        `UPDATE tasks SET status = 'pending_content_review', updated_at = ?
+      `UPDATE tasks SET status = ?, updated_at = ?
          WHERE id = ? AND user_id = ? AND status = 'rendering'
          AND EXISTS (SELECT 1 FROM step_attempts WHERE id = ? AND status = 'completed')`
-      ).bind(input.updatedAt, input.taskId, input.userId, input.attemptId)
+      ).bind(input.nextStatus ?? 'pending_content_review', input.updatedAt, input.taskId, input.userId, input.attemptId)
     ]);
   }
 

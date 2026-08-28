@@ -9,6 +9,16 @@ test-results/
 .dev.vars
 *.pem
 *.key
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+uploads/
+generated/
+renders/
+logs/
 .DS_Store
 .superpowers/
 .worktrees/

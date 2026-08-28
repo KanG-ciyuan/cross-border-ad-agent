@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Env } from "../env";
 import {
@@ -15,6 +15,24 @@ import {
 } from "./session";
 
 const INVALID_CREDENTIALS = { error: { code: "INVALID_CREDENTIALS" } } as const;
+type LoginFailureStage = "user_lookup" | "password_verify" | "session_create";
+
+function loginInfrastructureFailure(
+  context: Context<{ Bindings: Env }>,
+  stage: LoginFailureStage
+) {
+  console.error(`[auth.login] stage=${stage}`);
+  return context.json(
+    {
+      error: {
+        code: "AUTH_INTERNAL_ERROR",
+        message: `AUTH_INTERNAL_ERROR:${stage}`,
+        stage
+      }
+    },
+    500
+  );
+}
 
 function usesSecureSessionCookies(APP_ENV: Env["APP_ENV"]) {
   return APP_ENV === "preview" || APP_ENV === "production";
@@ -49,27 +67,42 @@ export function createAuthRoutes() {
 
     const { email, password } = body as { email: string; password: string };
     const repository = new AuthRepository(context.env.DB);
-    const user = await repository.findUserByEmail(email);
-    const valid = user
-      ? await verifyPassword(password, context.env.SESSION_PEPPER, {
-          hash: user.passwordHash,
-          salt: user.passwordSalt,
-          iterations: user.passwordIterations
-        })
-      : false;
+    let user;
+    try {
+      user = await repository.findUserByEmail(email);
+    } catch {
+      return loginInfrastructureFailure(context, "user_lookup");
+    }
+
+    let valid = false;
+    try {
+      valid = user
+        ? await verifyPassword(password, context.env.SESSION_PEPPER, {
+            hash: user.passwordHash,
+            salt: user.passwordSalt,
+            iterations: user.passwordIterations
+          })
+        : false;
+    } catch {
+      return loginInfrastructureFailure(context, "password_verify");
+    }
     if (!user || !valid || user.disabledAt !== null) {
       return context.json(INVALID_CREDENTIALS, 401);
     }
 
     const token = generateSessionToken();
     const now = Date.now();
-    await repository.createSession({
-      id: `ses_${crypto.randomUUID()}`,
-      userId: user.id,
-      tokenHash: await hashSessionToken(token),
-      createdAt: now,
-      expiresAt: now + SESSION_TTL_SECONDS * 1_000
-    });
+    try {
+      await repository.createSession({
+        id: `ses_${crypto.randomUUID()}`,
+        userId: user.id,
+        tokenHash: await hashSessionToken(token),
+        createdAt: now,
+        expiresAt: now + SESSION_TTL_SECONDS * 1_000
+      });
+    } catch {
+      return loginInfrastructureFailure(context, "session_create");
+    }
     setCookie(context, SESSION_COOKIE, token, {
       path: "/",
       httpOnly: true,

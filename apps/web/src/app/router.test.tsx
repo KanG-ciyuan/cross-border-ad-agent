@@ -13,6 +13,9 @@ describe("AppRouter", () => {
   it("does not report a blocked same-origin request as a wrong password", () => {
     expect(loginErrorMessage(new Error("CROSS_ORIGIN_REQUEST"))).toBe("本地连接配置异常，请刷新后重试");
     expect(loginErrorMessage(new Error("INVALID_CREDENTIALS"))).toBe("邮箱或密码不正确");
+    expect(loginErrorMessage(new Error("AUTH_INTERNAL_ERROR:password_verify"))).toBe(
+      "登录服务异常（支持码：password_verify）"
+    );
     expect(loginErrorMessage(new Error("请求失败"))).toBe("登录失败，请稍后重试");
   });
 

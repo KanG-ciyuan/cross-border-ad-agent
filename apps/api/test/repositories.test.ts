@@ -52,13 +52,17 @@ describe("D1 persistence schema", () => {
     expect(rows.results.map((row) => row.name)).toEqual(
       expect.arrayContaining([
         "approvals",
+        "analysis_maps",
         "assets",
         "cost_entries",
         "idempotency_keys",
+        "product_analyses",
         "sessions",
+        "revision_requests",
         "step_attempts",
         "task_versions",
         "tasks",
+        "usage_records",
         "users"
       ])
     );
@@ -100,6 +104,107 @@ describe("AuthRepository", () => {
 });
 
 describe("TaskRepository", () => {
+  it("persists immutable product analyses and scopes the latest version to its owner", async () => {
+    const auth = new AuthRepository(env.DB);
+    const repository = new TaskRepository(env.DB);
+    await seedUser(auth);
+    await seedTask(repository);
+    await repository.saveAsset({
+      id: "ast_front", taskId: "tsk_primary", companyId: "cmp_acme",
+      kind: "product_image", objectKey: "assets/product-front", originalFilename: "front.png",
+      mimeType: "image/png", sizeBytes: 4, origin: "user_upload", metadata: {}, createdAt: now
+    });
+
+    await repository.saveProductAnalysis({
+      id: "pan_1", taskId: "tsk_primary", sourceAssetId: "ast_front",
+      versionNumber: 1, analysis: { version: "product_analysis.v1", marker: "v1" }, createdAt: now
+    });
+    await repository.saveProductAnalysis({
+      id: "pan_2", taskId: "tsk_primary", sourceAssetId: "ast_front",
+      versionNumber: 2, analysis: { version: "product_analysis.v1", marker: "v2" }, createdAt: now + 1
+    });
+
+    expect(await repository.getLatestProductAnalysis("tsk_primary", "usr_owner")).toMatchObject({
+      id: "pan_2", sourceAssetId: "ast_front", versionNumber: 2,
+      analysis: { version: "product_analysis.v1", marker: "v2" }
+    });
+    expect(await repository.getLatestProductAnalysis("tsk_primary", "usr_other")).toBeNull();
+  });
+
+  it("persists immutable analysis maps and returns the latest scoped map", async () => {
+    const auth = new AuthRepository(env.DB);
+    const repository = new TaskRepository(env.DB);
+    await seedUser(auth);
+    await seedTask(repository);
+
+    await repository.saveAnalysisMap({
+      id: "anm_1",
+      taskId: "tsk_primary",
+      versionNumber: 1,
+      analysisMap: { version: "analysis_map.v1", segments: [{ id: "seg_1" }] },
+      createdAt: now
+    });
+    await repository.saveAnalysisMap({
+      id: "anm_2",
+      taskId: "tsk_primary",
+      versionNumber: 2,
+      analysisMap: { version: "analysis_map.v1", segments: [{ id: "seg_2" }] },
+      createdAt: now + 1
+    });
+
+    expect(await repository.getLatestAnalysisMap("tsk_primary", "usr_owner")).toMatchObject({
+      id: "anm_2",
+      versionNumber: 2,
+      analysisMap: { version: "analysis_map.v1", segments: [{ id: "seg_2" }] }
+    });
+    expect(await repository.getLatestAnalysisMap("tsk_primary", "usr_other")).toBeNull();
+  });
+
+  it("persists revision requests without mutating prior edit plans", async () => {
+    const auth = new AuthRepository(env.DB);
+    const repository = new TaskRepository(env.DB);
+    await seedUser(auth);
+    await seedTask(repository);
+
+    await repository.saveRevisionRequest({
+      id: "rev_1",
+      taskId: "tsk_primary",
+      userId: "usr_owner",
+      instruction: "前 3 秒更快，并保留产品特写",
+      baseVersionNumber: 1,
+      createdAt: now
+    });
+
+    expect(await repository.listRevisionRequests("tsk_primary", "usr_owner")).toEqual([
+      expect.objectContaining({
+        id: "rev_1",
+        instruction: "前 3 秒更快，并保留产品特写",
+        baseVersionNumber: 1
+      })
+    ]);
+  });
+
+  it("records provider usage without inventing an amount", async () => {
+    const auth = new AuthRepository(env.DB);
+    const repository = new TaskRepository(env.DB);
+    await seedUser(auth);
+    await seedTask(repository);
+
+    await repository.saveUsageRecord({
+      id: "use_1",
+      taskId: "tsk_primary",
+      provider: "vision_provider",
+      operation: "segment_analysis",
+      calls: 3,
+      actualAmountFen: undefined,
+      createdAt: now
+    });
+
+    expect(await repository.listUsageRecords("tsk_primary", "usr_owner")).toEqual([
+      expect.objectContaining({ calls: 3, actualAmountFen: null })
+    ]);
+  });
+
   it("scopes task reads and lists to the authenticated user", async () => {
     const auth = new AuthRepository(env.DB);
     const repository = new TaskRepository(env.DB);
@@ -216,6 +321,29 @@ describe("TaskRepository", () => {
     expect(first).toEqual({ reserved: true, attemptId: "atm_first" });
     expect(second).toEqual({ reserved: false, attemptId: "atm_first" });
     expect(await repository.listStepAttempts("tsk_primary", "usr_owner")).toHaveLength(1);
+  });
+
+  it("marks a failed Agent step and allocates a new attempt number for retry", async () => {
+    const auth = new AuthRepository(env.DB);
+    const repository = new TaskRepository(env.DB);
+    await seedUser(auth);
+    await seedTask(repository);
+    const reserved = await repository.reserveStepAttempt({
+      idempotencyKey: "product-analysis-failure", companyId: "cmp_acme", userId: "usr_owner",
+      taskId: "tsk_primary", operation: "product_analysis",
+      attempt: { id: "atm_product_fail", step: "product_image_analysis", attemptNumber: 1, status: "queued", provider: "pending", request: {}, createdAt: now },
+      expiresAt: now + 86_400_000
+    });
+
+    await repository.failStepAttempt({
+      attemptId: reserved.attemptId, taskId: "tsk_primary", userId: "usr_owner",
+      errorCode: "PRODUCT_VISION_FAILED", updatedAt: now + 1
+    });
+
+    expect(await repository.listStepAttempts("tsk_primary", "usr_owner")).toEqual([
+      expect.objectContaining({ status: "failed", errorCode: "PRODUCT_VISION_FAILED" })
+    ]);
+    expect(await repository.nextStepAttemptNumber("tsk_primary", "usr_owner", "product_image_analysis")).toBe(2);
   });
 
   it("appends integer-fen costs and totals them per scoped task", async () => {

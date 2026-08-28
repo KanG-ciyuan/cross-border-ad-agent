@@ -8,3 +8,4 @@ allowBuilds:
 
 overrides:
   '@types/node': 26.2.0
+  use-sync-external-store: 1.6.0

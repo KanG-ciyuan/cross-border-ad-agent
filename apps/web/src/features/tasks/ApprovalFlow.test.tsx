@@ -7,10 +7,10 @@ import { ReviewPage } from "./ReviewPage";
 describe("ConfirmationPage", () => {
   it("keeps source metadata outside reference images and blocks generation until all confirmations", async () => {
     const generate = vi.fn();
-    const { container } = render(<ConfirmationPage taskTitle="FreshClean 清洁剂" estimatedFen={1800} limitFen={4500} onGenerate={generate} onBack={() => undefined} />);
+    const { container } = render(<ConfirmationPage taskTitle="FreshClean 清洁剂" onGenerate={generate} onBack={() => undefined} />);
 
     expect(screen.getByText(/FreshClean 清洁剂/)).toBeInTheDocument();
-    expect(screen.getByText("¥18.00")).toBeInTheDocument();
+    expect(screen.queryByText(/预计费用|费用上限/)).not.toBeInTheDocument();
     expect(screen.getAllByText("生成候选")).toHaveLength(2);
     for (const image of screen.getAllByRole("img")) {
       expect(image.getAttribute("alt")).not.toMatch(/生成候选|AI|推测/);
@@ -18,7 +18,7 @@ describe("ConfirmationPage", () => {
     }
     expect(container.querySelector(".reference-image .source-badge")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "确认并生成初版" }));
-    expect(screen.getByText("请完成全部四项确认")).toBeInTheDocument();
+    expect(screen.getByText("请完成全部确认")).toBeInTheDocument();
     expect(generate).not.toHaveBeenCalled();
   });
 });
@@ -35,6 +35,15 @@ describe("ReviewPage", () => {
     expect(screen.getByText(/真实 MP4 成片/)).toBeInTheDocument();
     expect(screen.queryByText("模拟生成结果")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新生成镜头 3" })).not.toBeInTheDocument();
+  });
+
+  it("labels the current review stage instead of calling every review content review", () => {
+    render(<ReviewPage reviewStage="preview" taskTitle="FreshClean 清洁剂" versionNumber={2}
+      videoUrl="/api/tasks/tsk_real0001/assets/ast_output001"
+      onRetryShot={() => undefined} onApproveContent={() => undefined} onApproveFinal={() => undefined} />);
+
+    expect(screen.getByRole("heading", { name: "审核低清预览" })).toBeInTheDocument();
+    expect(screen.getByText("待低清预览审核")).toBeInTheDocument();
   });
 
   it("retries one shot without replacing successful shots and keeps final approval separate", async () => {

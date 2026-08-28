@@ -15,6 +15,7 @@ const bindings = {
   MEDIA: env.MEDIA,
   APP_ENV: "test" as const,
   SESSION_PEPPER: "test-only-pepper",
+  ANALYSIS_PROVIDER: "demo" as const,
   DECLARED_D1_DATABASE_NAME: "ad-agent-test-db",
   DECLARED_R2_BUCKET_NAME: "ad-agent-test-media"
 };
@@ -64,12 +65,24 @@ const completeCreation = {
   referenceGeneration: ["three_view", "nine_grid"]
 };
 
+const editOnly = {
+  goal: "edit_only" as const,
+  market: "ID" as const,
+  platform: "tiktok" as const,
+  editInstructions: "制作印尼 TikTok 素材剪辑",
+  targetDurationSeconds: 30,
+  ratio: "9:16" as const,
+  allowedOperations: ["trim"]
+};
+
 async function seedEditPlan(repository: TaskRepository, taskId: string) {
   await repository.saveVersion({
     id: `ver_${crypto.randomUUID()}`, taskId, versionNumber: 1, createdAt: Date.now(),
-    editPlan: { version: "edit_plan.v1", taskId, output: { width: 1080, height: 1920, fps: 30, language: "id-ID" },
-      tracks: [{ id: "trk_video001", type: "video", clips: [{ id: "clp_video001", assetId: "ast_video001", startMs: 0, endMs: 1000, origin: "uploaded" }] }],
-      cost: { currency: "CNY", estimatedFen: 300, limitFen: 1_000 }, approvals: [] }
+    editPlan: { version: "edit_plan.v1", taskId,
+      output: { width: 1080, height: 1920, fps: 30, language: "id-ID", ratio: "9:16", durationSeconds: 1 },
+      tracks: [{ id: "trk_video001", type: "video", clips: [{ id: "clp_video001", sourceAssetId: "ast_video001", startMs: 0, endMs: 1000, origin: "uploaded" }] }],
+      processing: { cropMode: "crop", muteOriginalAudio: false, captions: "none", voiceover: "none", music: "none" },
+      explanations: [{ clipId: "clp_video001", reason: "Test fixture source clip" }], approvals: [] }
   });
 }
 
@@ -102,6 +115,9 @@ describe("task API", () => {
           goal: "edit_only",
           market: "ID",
           platform: "tiktok",
+          editInstructions: "制作印尼 TikTok 素材剪辑",
+          targetDurationSeconds: 30,
+          ratio: "9:16",
           allowedOperations: ["trim", "concat", "captions"]
         })
       }),
@@ -126,6 +142,9 @@ describe("task API", () => {
           goal: "edit_only",
           market: "ID",
           platform: "tiktok",
+          editInstructions: "制作印尼 TikTok 素材剪辑",
+          targetDurationSeconds: 30,
+          ratio: "9:16",
           allowedOperations: ["trim"],
           referenceGeneration: ["three_view"]
         })
@@ -159,7 +178,7 @@ describe("task API", () => {
     expect(otherDetail.status).toBe(404);
   });
 
-  it("blocks rendering when the estimate exceeds the approved RMB limit", async () => {
+  it("rejects legacy cost-bearing edit plans", async () => {
     const create = await createApp().fetch(
       apiRequest("/api/tasks", {
         method: "POST",
@@ -179,12 +198,12 @@ describe("task API", () => {
         cost: { currency: "CNY", estimatedFen: 12_001, limitFen: 20_000 }, approvals: [] }
     });
 
-    for (const kind of ["reference", "storyboard", "cost", "risk"]) {
+    for (const kind of ["reference", "storyboard", "risk"]) {
       await createApp().fetch(
         apiRequest(`/api/tasks/${taskId}/approvals`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Idempotency-Key": `approval-${kind}` },
-          body: JSON.stringify({ kind, decision: "approved", snapshot: kind === "cost" ? { versionId: "ver_costplan01" } : {} })
+          body: JSON.stringify({ kind, decision: "approved", snapshot: {} })
         }),
         bindings
       );
@@ -204,7 +223,7 @@ describe("task API", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { code: "COST_LIMIT_EXCEEDED" } });
+    expect(await response.json()).toMatchObject({ error: { code: "CONFLICT" } });
   });
 
   it("requires reference and storyboard confirmation before complete-creation render", async () => {
@@ -245,6 +264,9 @@ describe("task API", () => {
           goal: "edit_only",
           market: "ID",
           platform: "tiktok",
+          editInstructions: "制作印尼 TikTok 素材剪辑",
+          targetDurationSeconds: 30,
+          ratio: "9:16",
           allowedOperations: ["trim"]
         })
       }),
@@ -276,7 +298,7 @@ describe("task API", () => {
   it("rejects client cost overrides and draft-to-render state skips", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+        body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const withCosts = await createApp().fetch(apiRequest(`/api/tasks/${taskId}/render`, {
@@ -294,7 +316,7 @@ describe("task API", () => {
   it("returns the same render attempt for a repeated idempotency key", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+      body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
@@ -318,6 +340,8 @@ describe("task API", () => {
       body: JSON.stringify({
         goal: "edit_only", market: "ID", platform: "tiktok",
         editInstructions: "Pertahankan perbandingan sebelum dan sesudah.",
+        targetDurationSeconds: 30,
+        ratio: "9:16",
         allowedOperations: ["trim", "concat", "captions", "transitions"]
       })
     }), bindings);
@@ -365,7 +389,7 @@ describe("task API", () => {
   it("does not execute rendering when another request already reserved the same key", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+      body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
@@ -390,7 +414,7 @@ describe("task API", () => {
   it("marks a failed render retryable and charges only the successful retry", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+      body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
@@ -409,14 +433,14 @@ describe("task API", () => {
     const retry = await run("render-retry");
     expect(retry.status).toBe(202);
     expect((await repository.getTaskForUser(taskId, "usr_owner"))?.status).toBe("pending_content_review");
-    expect(await repository.sumCostFen(taskId, "usr_owner")).toBe(300);
+    expect(await repository.sumCostFen(taskId, "usr_owner")).toBe(0);
     expect(await repository.listStepAttempts(taskId, "usr_owner")).toHaveLength(2);
   });
 
   it("allows only one concurrent render transition across different keys", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+      body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
@@ -446,7 +470,7 @@ describe("task API", () => {
   it("atomically records only one concurrent content review", async () => {
     const create = await createApp().fetch(apiRequest("/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "edit_only", market: "ID", platform: "tiktok", allowedOperations: ["trim"] })
+      body: JSON.stringify(editOnly)
     }), bindings);
     const taskId = ((await create.json()) as { task: { id: string } }).task.id;
     const repository = new TaskRepository(env.DB);
@@ -471,6 +495,9 @@ describe("task API", () => {
           goal: "edit_only",
           market: "ID",
           platform: "tiktok",
+          editInstructions: "制作印尼 TikTok 素材剪辑",
+          targetDurationSeconds: 30,
+          ratio: "9:16",
           allowedOperations: ["trim"]
         })
       }),
@@ -480,7 +507,7 @@ describe("task API", () => {
     const repository = new TaskRepository(env.DB);
     await repository.saveAsset({ id: "ast_video001", taskId, companyId: "cmp_acme", kind: "source_video",
       objectKey: `assets/${crypto.randomUUID()}`, originalFilename: "source.mp4", mimeType: "video/mp4",
-      sizeBytes: 100, origin: "user_upload", metadata: {}, createdAt: Date.now() });
+      sizeBytes: 100, durationMs: 10_000, origin: "user_upload", metadata: {}, createdAt: Date.now() });
     await repository.updateTaskStatus(taskId, "usr_owner", "uploaded", Date.now());
 
     const run = () =>
@@ -520,7 +547,7 @@ describe("task API", () => {
     };
     expect(analyzed.task.status).toBe("awaiting_generation_approval");
     const versionId = analyzed.versions[0]!.id;
-    for (const kind of ["reference", "storyboard", "cost", "risk"]) {
+    for (const kind of ["reference", "storyboard", "risk"]) {
       const approval = await app.fetch(apiRequest(`/api/tasks/${taskId}/approvals`, {
         method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `full-flow-${kind}` },
         body: JSON.stringify({ kind, decision: "approved", snapshot: { versionId } })
@@ -542,7 +569,7 @@ describe("task API", () => {
       task: { status: string }; costFen: number; versions: unknown[]
     };
     expect(completed.task.status).toBe("approved");
-    expect(completed.costFen).toBe(1_800);
+    expect(completed.costFen).toBe(0);
     expect(completed.versions).toHaveLength(2);
   });
 });

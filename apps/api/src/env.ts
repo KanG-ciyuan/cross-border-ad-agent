@@ -1,6 +1,6 @@
 export interface Env {
   DB: D1Database;
-  MEDIA: R2Bucket;
+  MEDIA?: R2Bucket;
   APP_ENV: "local" | "test" | "preview" | "production";
   SESSION_PEPPER: string;
   ARK_API_KEY?: string;
@@ -9,9 +9,15 @@ export interface Env {
   MINIMAX_BASE_URL?: string;
   MINIMAX_MODEL_ID?: string;
   RENDERER_BASE_URL?: string;
+  ANALYSIS_PROVIDER?: "demo" | "media";
+  ANALYSIS_API_KEY?: string;
+  PRODUCT_VISION_PROVIDER?: "openai_compatible";
+  PRODUCT_VISION_API_KEY?: string;
+  PRODUCT_VISION_BASE_URL?: string;
+  PRODUCT_VISION_MODEL_ID?: string;
   VIDEO_GENERATION_PROVIDER?: "minimax" | "seedance";
   DECLARED_D1_DATABASE_NAME: string;
-  DECLARED_R2_BUCKET_NAME: string;
+  DECLARED_R2_BUCKET_NAME?: string;
 }
 
 const appEnvironments = new Set<Env["APP_ENV"]>([
@@ -28,28 +34,28 @@ export function hasValidWorkerBindings(bindings: unknown): bindings is Env {
   const hasRequiredBindings =
     candidate.DB !== undefined &&
     candidate.DB !== null &&
-    candidate.MEDIA !== undefined &&
-    candidate.MEDIA !== null &&
     typeof candidate.SESSION_PEPPER === "string" &&
     candidate.SESSION_PEPPER.trim().length > 0 &&
     typeof candidate.APP_ENV === "string" &&
     appEnvironments.has(candidate.APP_ENV as Env["APP_ENV"]) &&
     typeof candidate.DECLARED_D1_DATABASE_NAME === "string" &&
-    candidate.DECLARED_D1_DATABASE_NAME.trim().length > 0 &&
-    typeof candidate.DECLARED_R2_BUCKET_NAME === "string" &&
-    candidate.DECLARED_R2_BUCKET_NAME.trim().length > 0;
+    candidate.DECLARED_D1_DATABASE_NAME.trim().length > 0;
 
   if (!hasRequiredBindings) return false;
   if (candidate.VIDEO_GENERATION_PROVIDER !== undefined &&
     candidate.VIDEO_GENERATION_PROVIDER !== "minimax" &&
     candidate.VIDEO_GENERATION_PROVIDER !== "seedance") return false;
+  if (candidate.ANALYSIS_PROVIDER !== undefined &&
+    candidate.ANALYSIS_PROVIDER !== "demo" && candidate.ANALYSIS_PROVIDER !== "media") return false;
+  if (candidate.PRODUCT_VISION_PROVIDER !== undefined &&
+    candidate.PRODUCT_VISION_PROVIDER !== "openai_compatible") return false;
   if (candidate.APP_ENV === "production") return true;
 
   // These labels are fail-fast configuration metadata, not cloud identity proof.
   return ![
     candidate.DECLARED_D1_DATABASE_NAME,
     candidate.DECLARED_R2_BUCKET_NAME
-  ].some(
+  ].filter((name): name is string => typeof name === "string").some(
     (name) =>
       typeof name === "string" &&
       /(^|[-_.])prod(?:uction)?($|[-_.])/i.test(name)

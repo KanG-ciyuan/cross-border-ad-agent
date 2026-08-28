@@ -1,4 +1,4 @@
-import type { TaskCreateInput, TaskStatus } from "@ad-agent/contracts";
+import type { ProductAnalysisV1, TaskCreateInput, TaskStatus } from "@ad-agent/contracts";
 
 export interface PublicTask {
   id: string;
@@ -68,11 +68,63 @@ export async function startAnalysis(taskId: string) {
   });
 }
 
+export async function startProductAnalysis(taskId: string, assetId: string) {
+  return request<{ attemptId: string; version: number }>(`/api/tasks/${taskId}/product-analysis`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ assetId })
+  });
+}
+
+export async function analyzeProductImage(taskId: string, file: File) {
+  return request<{ attemptId: string; version: number; sourceAssetId: string }>(
+    `/api/tasks/${taskId}/product-analysis`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type,
+        "X-File-Size": String(file.size),
+        "X-Filename": encodeURIComponent(file.name),
+        "Idempotency-Key": crypto.randomUUID()
+      },
+      body: file
+    }
+  );
+}
+
+export async function approveProductFacts(taskId: string, snapshot: unknown) {
+  return request(`/api/tasks/${taskId}/approvals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ kind: "product_facts", decision: "approved", snapshot })
+  });
+}
+export async function createEditPlan(taskId: string) {
+  return request<{ attemptId: string; version: number }>(`/api/tasks/${taskId}/plan`, {
+    method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: "{}"
+  });
+}
+export async function approveEditPlan(taskId: string) {
+  return request(`/api/tasks/${taskId}/approvals`, {
+    method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ kind: "plan", decision: "approved", snapshot: {} })
+  });
+}
+
 export interface TaskDetail {
   task: PublicTask;
   assets: Array<{ id: string; originalFilename: string; mimeType: string }>;
   costFen: number;
   versions: Array<{ id: string; versionNumber: number; editPlan: unknown; renderReceipt: unknown | null; outputAssetId?: string; createdAt: number }>;
+  analysisMap?: unknown;
+  productAnalysis?: {
+    id: string;
+    taskId: string;
+    sourceAssetId: string;
+    versionNumber: number;
+    analysis: ProductAnalysisV1;
+    createdAt: number;
+  } | null;
 }
 
 export async function getTask(taskId: string) { return request<TaskDetail>(`/api/tasks/${taskId}`); }
@@ -90,7 +142,7 @@ export async function renderTask(taskId: string) {
   });
 }
 
-export async function reviewTask(taskId: string, action: "approve_content" | "approve_final") {
+export async function reviewTask(taskId: string, action: "approve_preview" | "approve_content" | "approve_final") {
   return request<{ status: TaskStatus }>(`/api/tasks/${taskId}/review`, {
     method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify({ action })

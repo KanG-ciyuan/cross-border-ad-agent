@@ -38,5 +38,22 @@ export function createIntegrationRoutes() {
     });
   });
 
+  routes.get("/product-vision", async (context) => {
+    const user = await getAuthenticatedUser(context);
+    if (!user) return context.json({ error: { code: "UNAUTHENTICATED" } }, 401);
+
+    const configured = Boolean(
+      context.env.PRODUCT_VISION_PROVIDER === "openai_compatible" &&
+      context.env.PRODUCT_VISION_API_KEY?.trim() &&
+      context.env.PRODUCT_VISION_BASE_URL?.trim() &&
+      context.env.PRODUCT_VISION_MODEL_ID?.trim()
+    );
+    return context.json({
+      configured,
+      provider: context.env.PRODUCT_VISION_PROVIDER ?? "openai_compatible",
+      model: context.env.PRODUCT_VISION_MODEL_ID?.trim() || "未配置"
+    });
+  });
+
   return routes;
 }

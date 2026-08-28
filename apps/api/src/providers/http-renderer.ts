@@ -36,6 +36,7 @@ export class HttpRenderProvider {
     title: string;
     caption: string;
     cta: string;
+    muteOriginalAudio?: boolean;
     sources: RenderSource[];
   }): Promise<{ receipt: RenderReceipt; bytes: ArrayBuffer }> {
     const sourceById = new Map(input.sources.map((source) => [source.assetId, source]));
@@ -43,7 +44,7 @@ export class HttpRenderProvider {
     if (!videoTrack) throw new HttpRendererError("MATERIAL_REQUIRED");
     const form = new FormData();
     const clips = videoTrack.clips.map((clip, index) => {
-      const source = sourceById.get(clip.assetId);
+      const source = sourceById.get(clip.sourceAssetId);
       if (!source) throw new HttpRendererError("MATERIAL_REQUIRED");
       const field = `clip_${index}`;
       form.append(field, new Blob([source.bytes], { type: source.mimeType }), source.filename);
@@ -54,6 +55,7 @@ export class HttpRenderProvider {
       title: input.title,
       caption: input.caption,
       cta: input.cta,
+      muteOriginalAudio: input.muteOriginalAudio ?? false,
       clips
     }));
     let response: Response;

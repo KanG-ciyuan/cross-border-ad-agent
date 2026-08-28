@@ -4,6 +4,15 @@ Date: 2026-08-26
 
 This report covers local acceptance only. It is not evidence of production readiness or a Cloudflare deployment.
 
+> Historical note (2026-08-28): a Cloudflare production deployment was created after this report. Its product-image Provider calls failed at the Worker-to-relay network boundary. The approved next runtime target is a long-running Windows host. See the repository `HANDOFF.md` for current status; do not use this historical sentence as the latest deployment truth.
+
+## 2026-08-28 storage-free product-image delta
+
+- Product-image analysis now accepts a bounded authenticated image request and passes its bytes directly to the visual Provider without writing the original image to R2 or D1.
+- D1 retains only the task, opaque transient source ID, validated `product_analysis.v1`, Agent attempt, usage call count, and human-approval state.
+- The Worker no longer requires an R2 binding to start. Stored-media upload, video rendering, output download, and cross-device recovery remain optional capabilities that return an explicit storage error when no media store is configured.
+- Wrangler local, preview, and production declarations no longer create or require an R2 bucket. No public deployment or remote migration is claimed by this change.
+
 ## Verified locally
 
 - The browser checks the real session endpoint, submits the company email/password login form, and uses the task API after authentication. E2E uses narrowly scoped login/session/list mocks; API authentication and 401 behavior are covered separately by integration tests.

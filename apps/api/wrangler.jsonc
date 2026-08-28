@@ -19,8 +19,7 @@
     "MINIMAX_MODEL_ID": "MiniMax-H3",
     "RENDERER_BASE_URL": "http://127.0.0.1:8790",
     "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
-    "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-local-db",
-    "DECLARED_R2_BUCKET_NAME": "cross-border-ad-agent-local-media"
+    "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-local-db"
   },
   "d1_databases": [
     {
@@ -29,14 +28,30 @@
       "migrations_dir": "../../migrations"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "MEDIA",
-      "bucket_name": "cross-border-ad-agent-local-media"
-    }
-  ],
 
   "env": {
+    "production": {
+      "name": "cross-border-ad-agent",
+      "vars": {
+        "APP_ENV": "production",
+        "VIDEO_GENERATION_PROVIDER": "minimax",
+        "MINIMAX_BASE_URL": "https://api.minimaxi.com",
+        "MINIMAX_MODEL_ID": "MiniMax-H3",
+        "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
+        "PRODUCT_VISION_PROVIDER": "openai_compatible",
+        "PRODUCT_VISION_BASE_URL": "https://llmtoken.io/v1",
+        "PRODUCT_VISION_MODEL_ID": "gpt-5.6-terra",
+        "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-prod-db"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "cross-border-ad-agent-prod-db",
+          "database_id": "b3609e40-4ff5-4946-9027-1f2254d081ed",
+          "migrations_dir": "../../migrations"
+        }
+      ]
+    },
     "preview": {
       "name": "cross-border-ad-agent-preview",
       "vars": {
@@ -45,8 +60,7 @@
         "MINIMAX_BASE_URL": "https://api.minimaxi.com",
         "MINIMAX_MODEL_ID": "MiniMax-H3",
         "SEEDANCE_MODEL_ID": "doubao-seedance-2-5-260628",
-        "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-preview-db",
-        "DECLARED_R2_BUCKET_NAME": "cross-border-ad-agent-preview-media"
+        "DECLARED_D1_DATABASE_NAME": "cross-border-ad-agent-preview-db"
       },
       "d1_databases": [
         {
@@ -54,12 +68,6 @@
           "database_name": "cross-border-ad-agent-preview-db",
           "database_id": "preview-d1-id-requires-fresh-approval",
           "migrations_dir": "../../migrations"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "MEDIA",
-          "bucket_name": "cross-border-ad-agent-preview-media"
         }
       ]
     }

@@ -34,7 +34,7 @@ export function TaskListPage({ state, tasks, onRetry, onOpen, onCreate }: {
         <div className="metric"><span>处理中</span><strong>{tasks.filter((task) => !["approved", "draft"].includes(task.status)).length}</strong></div>
         <div className="metric"><span>等待确认</span><strong>{tasks.filter((task) => task.status.includes("approval")).length}</strong></div>
         <div className="metric"><span>本月已批准</span><strong>{tasks.filter((task) => task.status === "approved").length}</strong></div>
-        <div className="metric"><span>本月生成费用</span><strong>{money.format(monthlyFen / 100)}</strong></div>
+        <div className="metric"><span title="仅统计已返回可信金额的实际调用">本月实际费用</span><strong>{money.format(monthlyFen / 100)}</strong></div>
       </div>
       {state === "loading" ? <div className="state-panel skeleton" aria-label="正在加载任务"><span /><span /><span /></div> : null}
       {state === "empty" ? <div className="state-panel"><Package size={30} /><h2>还没有广告任务</h2><button className="button primary" onClick={onCreate}>新建第一个广告</button></div> : null}

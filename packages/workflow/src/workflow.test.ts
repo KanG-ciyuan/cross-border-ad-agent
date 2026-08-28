@@ -79,6 +79,33 @@ describe("retry policy", () => {
 });
 
 describe("task state transitions", () => {
+  it("requires plan approval before preview rendering", () => {
+    expect(() => transition("analyzing", "start_preview" as never)).toThrow(
+      "INVALID_TRANSITION"
+    );
+    expect(transition("analyzing", "analysis_ready")).toBe(
+      "awaiting_plan_approval"
+    );
+    expect(
+      transition("awaiting_plan_approval" as never, "approve_plan" as never)
+    ).toBe("previewing");
+  });
+
+  it("moves a completed preview into human review", () => {
+    expect(transition("previewing" as never, "preview_complete" as never)).toBe(
+      "awaiting_preview_review"
+    );
+  });
+
+  it("keeps rejected previews in a revision loop", () => {
+    expect(
+      transition("awaiting_preview_review" as never, "request_revision" as never)
+    ).toBe("revision_requested");
+    expect(
+      transition("revision_requested" as never, "submit_revision" as never)
+    ).toBe("awaiting_plan_approval");
+  });
+
   it("does not skip final approval", () => {
     expect(() => transition("pending_content_review", "approve_final")).toThrow(
       "INVALID_TRANSITION"

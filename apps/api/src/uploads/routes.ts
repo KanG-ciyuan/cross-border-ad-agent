@@ -3,7 +3,7 @@ import type { Env } from "../env";
 import { getAuthenticatedUser, isSameOrigin } from "../auth/session";
 import { TaskRepository } from "../tasks/repository";
 
-// Multipart parsing buffers the body in the current MVP. Larger files require direct R2 upload.
+// Raw uploads are retained only for deployments that explicitly configure object storage.
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const allowedTypes = new Set([
   "image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"
@@ -40,11 +40,14 @@ export function createUploadRoutes() {
       context.req.param("taskId"), user.id
     );
     const asset = assets.find((candidate) => candidate.id === context.req.param("assetId"));
-    if (!asset || asset.kind !== "rendered_video") {
-      return context.json(error("NOT_FOUND", "Rendered video not found"), 404);
+    if (!asset || !["rendered_video", "product_image"].includes(asset.kind)) {
+      return context.json(error("NOT_FOUND", "Asset not found"), 404);
+    }
+    if (!context.env.MEDIA) {
+      return context.json(error("STORAGE_NOT_CONFIGURED", "Cloud asset storage is not configured"), 503);
     }
     const object = await context.env.MEDIA.get(asset.objectKey);
-    if (!object) return context.json(error("NOT_FOUND", "Rendered video not found"), 404);
+    if (!object) return context.json(error("NOT_FOUND", "Asset not found"), 404);
     const fallback = asset.originalFilename.replace(/[^A-Za-z0-9._-]/g, "_");
     const disposition = context.req.query("download") === "1" ? "attachment" : "inline";
     return new Response(object.body, {
@@ -61,6 +64,9 @@ export function createUploadRoutes() {
     if (!isSameOrigin(context.req.raw)) return context.json(error("FORBIDDEN", "Request denied"), 403);
     const user = await getAuthenticatedUser(context);
     if (!user) return context.json(error("AUTH_REQUIRED", "Authentication required"), 401);
+    if (!context.env.MEDIA) {
+      return context.json(error("STORAGE_NOT_CONFIGURED", "Cloud asset storage is not configured"), 503);
+    }
     const lengthHeader = context.req.header("Content-Length") ?? context.req.header("X-File-Size");
     if (!lengthHeader) return context.json(error("LENGTH_REQUIRED", "Content-Length or X-File-Size is required"), 411);
     const declaredLength = Number(lengthHeader);

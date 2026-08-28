@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { OutputRatio } from "./edit-plan";
+
 export const TaskGoal = z.enum(["complete_creation", "edit_only"]);
 export const InputMode = z.enum(["video", "product_images", "mixed"]);
 export const AllowedOperation = z.enum([
@@ -18,6 +20,12 @@ export const TaskStatus = z.enum([
   "uploaded",
   "analyzing",
   "needs_material",
+  "awaiting_plan_approval",
+  "previewing",
+  "awaiting_preview_review",
+  "revision_requested",
+  "final_rendering",
+  "awaiting_final_approval",
   "awaiting_generation_approval",
   "ready_to_render",
   "rendering",
@@ -64,14 +72,27 @@ const completeCreationInput = z.strictObject({
 const editOnlyInput = z.strictObject({
   ...baseTaskFields,
   goal: z.literal("edit_only"),
-  editInstructions: z.string().trim().min(1).max(1000).optional(),
-  allowedOperations: z.array(AllowedOperation).min(1)
+  editInstructions: z.string().trim().min(1).max(1000),
+  allowedOperations: z.array(AllowedOperation).min(1).optional(),
+  targetDurationSeconds: z.number().int().min(5).max(120),
+  ratio: OutputRatio,
+  mustUseClipIds: z.array(z.string().regex(/^(?:seg|clp)_[A-Za-z0-9-]{8,}$/)).min(1).optional(),
+  muteOriginalAudio: z.boolean().optional(),
+  subtitleLanguage: z.enum(["none", "id-ID"]).optional(),
+  voiceoverLanguage: z.enum(["none", "id-ID"]).optional()
 }).superRefine((input, context) => {
-  if (new Set(input.allowedOperations).size !== input.allowedOperations.length) {
+  if (input.allowedOperations && new Set(input.allowedOperations).size !== input.allowedOperations.length) {
     context.addIssue({
       code: "custom",
       path: ["allowedOperations"],
       message: "Allowed operations must be unique"
+    });
+  }
+  if (input.mustUseClipIds && new Set(input.mustUseClipIds).size !== input.mustUseClipIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["mustUseClipIds"],
+      message: "Must-use clip identifiers must be unique"
     });
   }
 });

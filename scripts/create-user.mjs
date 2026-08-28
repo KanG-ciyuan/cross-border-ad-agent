@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveLocalWrangler } from "./local-wrangler.mjs";
 
-const ITERATIONS = 210_000;
+const ITERATIONS = 100_000;
 
 function fail(message) {
   process.stderr.write(`${message}\n`);

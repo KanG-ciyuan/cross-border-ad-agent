@@ -12,7 +12,7 @@ interface ResourceEnvironment {
     database_id?: string;
     preview_database_id?: string;
   }>;
-  r2_buckets: Array<{
+  r2_buckets?: Array<{
     binding: string;
     bucket_name: string;
     preview_bucket_name?: string;
@@ -26,7 +26,7 @@ interface WranglerConfig extends ResourceEnvironment {
     not_found_handling?: string;
     run_worker_first?: string[] | boolean;
   };
-  env: { preview: ResourceEnvironment };
+  env: { preview: ResourceEnvironment; production: ResourceEnvironment };
 }
 
 const parseErrors: ParseError[] = [];
@@ -47,7 +47,7 @@ function requestWith(bindings: Record<string, unknown>) {
 }
 
 describe("Worker binding boundary", () => {
-  for (const binding of ["DB", "MEDIA", "SESSION_PEPPER", "APP_ENV"] as const) {
+  for (const binding of ["DB", "SESSION_PEPPER", "APP_ENV"] as const) {
     it(`refuses requests when ${binding} is missing`, async () => {
       const bindings: Record<string, unknown> = { ...validBindings };
       delete bindings[binding];
@@ -61,10 +61,17 @@ describe("Worker binding boundary", () => {
     });
   }
 
-  for (const binding of [
-    "DECLARED_D1_DATABASE_NAME",
-    "DECLARED_R2_BUCKET_NAME"
-  ] as const) {
+  it("accepts requests without an object-storage binding", async () => {
+    const bindings: Record<string, unknown> = { ...validBindings };
+    delete bindings.MEDIA;
+    delete bindings.DECLARED_R2_BUCKET_NAME;
+
+    const response = await requestWith(bindings);
+
+    expect(response.status).toBe(404);
+  });
+
+  for (const binding of ["DECLARED_D1_DATABASE_NAME"] as const) {
     it(`refuses requests when declared metadata ${binding} is missing`, async () => {
       const bindings: Record<string, unknown> = { ...validBindings };
       delete bindings[binding];
@@ -140,18 +147,13 @@ function expectIsolatedResourceDeclarations(
   expect(environment.vars.APP_ENV).toBe(APP_ENV);
 
   const database = environment.d1_databases.find(({ binding }) => binding === "DB");
-  const bucket = environment.r2_buckets.find(({ binding }) => binding === "MEDIA");
   expect(database).toBeDefined();
-  expect(bucket).toBeDefined();
   expect(environment.vars.DECLARED_D1_DATABASE_NAME).toBe(database?.database_name);
-  expect(environment.vars.DECLARED_R2_BUCKET_NAME).toBe(bucket?.bucket_name);
 
   const resourceIdentifiers = [
     database?.database_name,
     database?.database_id,
-    database?.preview_database_id,
-    bucket?.bucket_name,
-    bucket?.preview_bucket_name
+    database?.preview_database_id
   ].filter((value): value is string => typeof value === "string");
   for (const identifier of resourceIdentifiers) {
     expect(identifier).not.toMatch(/(^|[-_.])prod(?:uction)?($|[-_.])/i);
@@ -163,7 +165,7 @@ describe("Wrangler resource isolation", () => {
     expect(parseErrors).toEqual([]);
   });
 
-  it("ties local and preview guard labels to their declared D1 and R2 resources", () => {
+  it("ties local and preview guard labels to their declared D1 resources", () => {
     expectIsolatedResourceDeclarations(wranglerConfig, "local");
     expectIsolatedResourceDeclarations(wranglerConfig.env.preview, "preview");
   });
@@ -175,13 +177,18 @@ describe("Wrangler resource isolation", () => {
       environment.vars.APP_ENV = APP_ENV;
       environment.d1_databases[0]!.database_name = `ad-agent-${APP_ENV}-db`;
       environment.vars.DECLARED_D1_DATABASE_NAME = `ad-agent-${APP_ENV}-db`;
-      environment.r2_buckets[0]!.bucket_name = `ad-agent-${APP_ENV}-media`;
-      environment.vars.DECLARED_R2_BUCKET_NAME = `ad-agent-${APP_ENV}-media`;
       environment.d1_databases[0]!.database_id = "production-database-id";
 
       expect(() => expectIsolatedResourceDeclarations(environment, APP_ENV)).toThrow();
     }
   );
+
+  it("does not declare object storage in local, preview, or production", () => {
+    for (const environment of [wranglerConfig, wranglerConfig.env.preview, wranglerConfig.env.production]) {
+      expect(environment.r2_buckets).toBeUndefined();
+      expect(environment.vars.DECLARED_R2_BUCKET_NAME).toBeUndefined();
+    }
+  });
 
   it("keeps the committed preview D1 ID as a non-resource approval sentinel", () => {
     expect(wranglerConfig.env.preview.d1_databases[0]?.database_id).toBe(

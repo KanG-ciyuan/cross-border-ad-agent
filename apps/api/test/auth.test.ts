@@ -44,6 +44,14 @@ function request(path: string, init?: RequestInit) {
 describe("invite-only authentication", () => {
   beforeEach(seedAuthorizedUser);
 
+  it("uses the Worker-compatible password derivation cost by default", async () => {
+    const record = await derivePasswordRecord("test-only-password", testEnv.SESSION_PEPPER, {
+      salt: new Uint8Array(16).fill(3)
+    });
+
+    expect(record.iterations).toBe(100_000);
+  });
+
   it("logs in an authorized user and stores only the session-token hash", async () => {
     const app = createApp();
     const response = await app.fetch(
@@ -189,6 +197,38 @@ describe("invite-only authentication", () => {
     expect(output).toBe("");
     log.mockRestore();
     warn.mockRestore();
+    error.mockRestore();
+  });
+
+  it("returns a non-sensitive support stage when login infrastructure fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const unavailableDb = {
+      prepare() {
+        throw new Error("test database unavailable");
+      }
+    } as unknown as D1Database;
+
+    const response = await createApp().fetch(
+      request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ email: "owner@example.com", password })
+      }),
+      { ...testEnv, DB: unavailableDb }
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "AUTH_INTERNAL_ERROR",
+        message: "AUTH_INTERNAL_ERROR:user_lookup",
+        stage: "user_lookup"
+      }
+    });
+    const output = error.mock.calls.flat().join(" ");
+    expect(output).toContain("stage=user_lookup");
+    expect(output).not.toContain("owner@example.com");
+    expect(output).not.toContain(password);
     error.mockRestore();
   });
 });

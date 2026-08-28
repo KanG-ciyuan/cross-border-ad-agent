@@ -1,4 +1,4 @@
-import type { EditPlanV1, TaskGoal } from "@ad-agent/contracts";
+import type { AnalysisMapV1, EditPlanV1, TaskGoal } from "@ad-agent/contracts";
 
 export type ProviderAssetKind = "product_image" | "source_video";
 export type ProviderOperation =
@@ -15,8 +15,13 @@ export interface AnalysisInput {
     facts: readonly string[];
     approvedClaims: readonly string[];
   };
-  assets: ReadonlyArray<{ id: string; kind: ProviderAssetKind }>;
+  assets: ReadonlyArray<{ id: string; kind: ProviderAssetKind; durationMs?: number }>;
   allowedOperations: readonly ProviderOperation[];
+  targetDurationSeconds?: number;
+  ratio?: "9:16" | "16:9";
+  muteOriginalAudio?: boolean;
+  subtitleLanguage?: "none" | "id-ID";
+  voiceoverLanguage?: "none" | "id-ID";
   referenceGeneration: ReadonlyArray<"three_view" | "nine_grid">;
   costLimitFen: number;
 }
@@ -61,6 +66,11 @@ export interface RenderReceipt {
 
 export interface AnalysisProvider {
   analyze(input: AnalysisInput): Promise<AnalysisResult>;
+}
+
+export interface FullVideoAnalysisProvider {
+  readonly provider: string;
+  analyze(input: AnalysisInput): Promise<AnalysisMapV1>;
 }
 
 export interface RenderProvider {

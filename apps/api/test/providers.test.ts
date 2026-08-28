@@ -30,7 +30,11 @@ describe("FakeAnalysisProvider", () => {
     expect(first.language).toBe("id-ID");
     expect(first.script).toContain("Pembersih Dapur 500ml");
     expect(first.storyboard).toHaveLength(9);
-    expect(first.editPlan.cost.currency).toBe("CNY");
+    expect(first.estimateFen).toBe(1_800);
+    expect(first.editPlan).not.toHaveProperty("cost");
+    expect(first.editPlan.output).toMatchObject({ ratio: "9:16", durationSeconds: 18 });
+    expect(first.editPlan.processing).toMatchObject({ cropMode: "crop", muteOriginalAudio: false });
+    expect(first.editPlan.explanations).toHaveLength(9);
   });
 
   it("keeps generated-reference provenance in metadata outside image bytes", async () => {
@@ -74,10 +78,15 @@ describe("FakeAnalysisProvider", () => {
 
     expect(result.references).toEqual([]);
     expect(result.storyboard).toEqual([]);
+    expect(result.estimateFen).toBe(300);
+    expect(result.editPlan).not.toHaveProperty("cost");
+    expect(result.editPlan.output).toMatchObject({ ratio: "9:16", durationSeconds: 30 });
+    expect(result.editPlan.processing).toMatchObject({ cropMode: "crop", muteOriginalAudio: false });
+    expect(result.editPlan.explanations).toHaveLength(6);
     expect(result.editPlan.tracks.flatMap((track) => track.clips)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ assetId: "ast_video001", origin: "uploaded" }),
-        expect.objectContaining({ assetId: "ast_video002", origin: "uploaded" })
+        expect.objectContaining({ sourceAssetId: "ast_video001", origin: "uploaded" }),
+        expect.objectContaining({ sourceAssetId: "ast_video002", origin: "uploaded" })
       ])
     );
     expect(JSON.stringify(result)).not.toContain('"origin":"generated"');
@@ -99,7 +108,7 @@ describe("FakeAnalysisProvider", () => {
     });
     const clips = result.editPlan.tracks[0]?.clips ?? [];
     expect(clips).toHaveLength(6);
-    expect(clips.map((clip) => clip.assetId)).toEqual([
+    expect(clips.map((clip) => clip.sourceAssetId)).toEqual([
       "ast_video001", "ast_video002", "ast_video001", "ast_video002", "ast_video001", "ast_video002"
     ]);
     expect(clips.map((clip) => [clip.startMs, clip.endMs])).toEqual([
@@ -120,7 +129,7 @@ describe("FakeRenderProvider", () => {
     expect(await provider.render(analysis.editPlan)).toEqual(receipt);
 
     const changed = structuredClone(analysis.editPlan);
-    changed.cost.estimatedFen += 1;
+    changed.processing.muteOriginalAudio = !changed.processing.muteOriginalAudio;
     expect(await hashEditPlan(changed)).not.toBe(receipt.planHash);
   });
 });

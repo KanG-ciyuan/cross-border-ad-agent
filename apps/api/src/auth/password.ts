@@ -51,7 +51,7 @@ export async function derivePasswordRecord(
   pepper: string,
   options: { iterations?: number; salt?: Uint8Array } = {}
 ): Promise<{ hash: string; salt: string; iterations: number }> {
-  const iterations = options.iterations ?? 210_000;
+  const iterations = options.iterations ?? 100_000;
   const salt = options.salt ?? crypto.getRandomValues(new Uint8Array(16));
   const hash = await deriveHash(password, pepper, salt, iterations);
   return { hash: bytesToBase64(hash), salt: bytesToBase64(salt), iterations };

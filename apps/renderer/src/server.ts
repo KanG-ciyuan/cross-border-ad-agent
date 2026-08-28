@@ -9,41 +9,10 @@ import {
   probeVideo,
   renderFinalVideo,
   RendererError,
-  requireSupportedVideoType
+  requireSupportedVideoType,
+  parseRenderManifest
 } from "./ffmpeg-renderer.ts";
 import { renderTextPpm } from "./bitmap-text.ts";
-
-interface RenderManifest {
-  output: { width: number; height: number; fps: number };
-  title: string;
-  caption: string;
-  cta: string;
-  clips: Array<{
-    field: string;
-    mimeType: string;
-    startMs: number;
-    endMs: number;
-  }>;
-}
-
-function parseManifest(value: FormDataEntryValue | null): RenderManifest {
-  if (typeof value !== "string") throw new RendererError("INVALID_RENDER_REQUEST");
-  let parsed: unknown;
-  try { parsed = JSON.parse(value); } catch { throw new RendererError("INVALID_RENDER_REQUEST"); }
-  const manifest = parsed as Partial<RenderManifest>;
-  if (!manifest.output || manifest.output.width !== 1080 || manifest.output.height !== 1920 ||
-    manifest.output.fps !== 30 || !Array.isArray(manifest.clips) || !manifest.clips.length ||
-    typeof manifest.title !== "string" || typeof manifest.caption !== "string" || typeof manifest.cta !== "string") {
-    throw new RendererError("INVALID_RENDER_REQUEST");
-  }
-  for (const clip of manifest.clips) {
-    if (!clip || typeof clip.field !== "string" || typeof clip.mimeType !== "string" ||
-      !Number.isInteger(clip.startMs) || !Number.isInteger(clip.endMs) || clip.endMs <= clip.startMs) {
-      throw new RendererError("INVALID_RENDER_REQUEST");
-    }
-  }
-  return manifest as RenderManifest;
-}
 
 async function webRequest(request: IncomingMessage) {
   const headers = new Headers();
@@ -61,7 +30,7 @@ async function webRequest(request: IncomingMessage) {
 
 async function handleRender(request: IncomingMessage) {
   const form = await (await webRequest(request)).formData();
-  const manifest = parseManifest(form.get("manifest"));
+  const manifest = parseRenderManifest(form.get("manifest"));
   const workspace = await mkdtemp(join(tmpdir(), "adflow-render-"));
   try {
     const normalizedInputs: string[] = [];
@@ -83,7 +52,8 @@ async function handleRender(request: IncomingMessage) {
         width: manifest.output.width,
         height: manifest.output.height,
         fps: manifest.output.fps,
-        hasAudio: inspection.hasAudio
+        fit: clip.fit ?? manifest.output.fit ?? manifest.fit,
+        hasAudio: inspection.hasAudio && !manifest.muteOriginalAudio
       });
       normalizedInputs.push(normalizedPath);
       normalizedDurations.push(window.durationSeconds);

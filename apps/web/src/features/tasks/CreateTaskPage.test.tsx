@@ -28,14 +28,16 @@ describe("CreateTaskPage", () => {
     expect(screen.queryByText("生成三视图")).not.toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText("剪辑要求"));
     await userEvent.type(screen.getByLabelText("剪辑要求"), "只保留产品使用过程，成片 20 秒。");
-    await userEvent.click(screen.getByRole("checkbox", { name: "转场" }));
-    await userEvent.click(screen.getByRole("button", { name: "检查并开始剪辑" }));
+    await userEvent.type(screen.getByRole("spinbutton", { name: "目标时长（秒）" }), "45");
+    await userEvent.click(screen.getByRole("button", { name: "提交并分析素材" }));
 
     expect(submit).toHaveBeenCalledOnce();
     const payload = submit.mock.calls[0]![0];
     expect(payload.goal).toBe("edit_only");
     expect(payload.editInstructions).toBe("只保留产品使用过程，成片 20 秒。");
-    expect(payload.allowedOperations).toEqual(["trim", "concat", "captions"]);
+    expect(payload).not.toHaveProperty("allowedOperations");
+    expect(payload.targetDurationSeconds).toBe(45);
+    expect(payload.muteOriginalAudio).toBe(true);
     expect(payload).not.toHaveProperty("product");
     expect(payload).not.toHaveProperty("referenceGeneration");
   });

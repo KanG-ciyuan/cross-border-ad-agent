@@ -99,4 +99,19 @@ describe("integration status API", () => {
     expect(body).toMatchObject({ selectedProvider: "minimax", configured: true, model: "MiniMax-H3" });
     expect(JSON.stringify(body)).not.toContain("test-only-minimax-key");
   });
+
+  it("reports product vision configuration without exposing its key or gateway", async () => {
+    const response = await createApp().fetch(request("product-vision"), {
+      ...baseBindings,
+      PRODUCT_VISION_PROVIDER: "openai_compatible" as const,
+      PRODUCT_VISION_API_KEY: "test-only-vision-key",
+      PRODUCT_VISION_BASE_URL: "https://gateway.example.test/v1",
+      PRODUCT_VISION_MODEL_ID: "vision-model"
+    });
+    const body = await response.json();
+
+    expect(body).toEqual({ configured: true, provider: "openai_compatible", model: "vision-model" });
+    expect(JSON.stringify(body)).not.toContain("test-only-vision-key");
+    expect(JSON.stringify(body)).not.toContain("gateway.example.test");
+  });
 });
