@@ -95,12 +95,13 @@ pnpm dev
 
 Windows 接手前先阅读：
 
-1. [HANDOFF.md](HANDOFF.md)
-2. [AGENTS.md](AGENTS.md)
-3. [Windows 迁移与运行计划](docs/deployment/windows-node-migration.md)
-4. [Agent Harness 架构](docs/architecture/agent-harness-runtime.md)
-5. [已有素材智能剪辑计划](docs/superpowers/plans/2026-08-27-existing-material-agent-editing.md)
-6. [资产血缘画布计划](docs/superpowers/plans/2026-08-27-xyflow-asset-lineage-canvas.md)
+1. [DeepSeek Harness 启动交接指令](DEEPSEEK_START_PROMPT.md)
+2. [HANDOFF.md](HANDOFF.md)
+3. [AGENTS.md](AGENTS.md)
+4. [Windows 迁移与运行计划](docs/deployment/windows-node-migration.md)
+5. [Agent Harness 架构](docs/architecture/agent-harness-runtime.md)
+6. [已有素材智能剪辑计划](docs/superpowers/plans/2026-08-27-existing-material-agent-editing.md)
+7. [资产血缘画布计划](docs/superpowers/plans/2026-08-27-xyflow-asset-lineage-canvas.md)
 
 ## 安全
 
