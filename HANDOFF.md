@@ -2,6 +2,8 @@
 
 更新时间：2026-08-28
 
+私有仓库：`https://github.com/KanG-ciyuan/cross-border-ad-agent`
+
 本文是另一台电脑或另一种 Agent Harness 接手项目时的第一入口。它记录产品不能偏离的边界、当前事实、历史状态、已知失败、环境迁移方向和恢复顺序。不得仅凭页面可见或测试通过就宣称真实模型链路已经完成。
 
 ## 1. 接手目标
@@ -81,6 +83,7 @@
 ## 4. 当前代码与分支状态
 
 - 当前开发分支：`feat/mvp-foundation`。
+- GitHub 默认分支当前也是 `feat/mvp-foundation`，普通 clone 会取得最新交接基线；旧 `main` 仅保留历史基础版本。
 - 项目是 pnpm monorepo，Node.js 要求 `>=22.22.2`。
 - 前端：React 19、Vite、React Router、XYFlow。
 - API：Hono，当前通过 Wrangler 运行并使用 Cloudflare bindings。

@@ -112,7 +112,7 @@ D:\AdFlow\logs
 - 剪映桌面版，仅在开始 executor 验证时安装和登录。
 
 ```powershell
-git clone <private-repository-url> D:\AdFlow\app
+git clone https://github.com/KanG-ciyuan/cross-border-ad-agent.git D:\AdFlow\app
 Set-Location D:\AdFlow\app
 corepack enable
 pnpm install --frozen-lockfile
