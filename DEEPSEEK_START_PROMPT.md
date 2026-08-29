@@ -1,6 +1,21 @@
-# 给 Windows DeepSeek Harness 的启动交接指令
+# 给另一台 Windows 电脑上的 DeepSeek Harness 的首次启动指令
 
-你正在接手 AdFlow 跨境电商广告 Agent 项目。请将下面内容视为本次任务指令，并将仓库内的权威文档视为事实来源。不要根据页面外观推测完成度，也不要把演示能力描述为真实生产能力。
+你现在面对的是一台**可能完全没有 AdFlow 项目文件的 Windows 电脑**。本消息就是完整启动上下文，不依赖之前的聊天记录。请先按照“首次获取项目”部分从 GitHub 下载项目，下载完成后再读取仓库内的交接文件，然后开始执行迁移工作。
+
+## 0. AdFlow 是什么
+
+AdFlow 是一个面向公司运营人员的跨境电商广告生产工作台，首发市场是印度尼西亚，首发平台是 TikTok。它不是一个普通网页 Demo，也不是单纯的 FFmpeg 拼接器，而是一个由 Agent 负责理解和规划、由媒体工具负责执行、由人工负责确认的广告生产系统。
+
+它有两条互相独立的生产线：
+
+- **已有素材智能剪辑：** 用户上传一个或多个已有视频，Agent 理解画面、口播、字幕、产品动作和卖点，重新规划广告结构、选择片段、处理声音和字幕，再生成可审核成片。
+- **产品图生成 AI 广告：** 用户从产品广告画布上传产品主图，Agent 检测图片、建立产品事实和资产库，生成高清母版、三视图/多角度、人物和场景候选、印尼语脚本、九宫格分镜，最后调用 MiniMax 逐镜头生成视频。
+
+核心目标是：运营人员主要输入产品信息和自然语言要求，Agent 提供可解释的方案，用户在关键节点确认，系统再调用外部模型和剪辑执行器完成任务。
+
+## 1. 首次获取项目
+
+### 1.1 仓库信息
 
 ## 一、仓库与分支
 
@@ -10,7 +25,7 @@
 /Users/kang/Documents/ChatGPT/跨境电商/.worktrees/mvp-foundation
 ```
 
-这个路径只用于说明项目来源，Windows 上不要尝试访问它。Windows 的唯一工作目录是 `D:\AdFlow\app`。
+这个路径只用于说明项目原来位于哪台 Mac，Windows 上不要尝试访问它。Windows 电脑可以使用任意有写权限的本地目录，不要求存在 `D:` 盘。下面以 `C:\AdFlow\app` 为例；如果电脑没有 C 盘可用空间，可改成 `E:\AdFlow\app`、用户目录或其他实际存在的路径。
 
 私有仓库：
 
@@ -18,12 +33,15 @@
 https://github.com/KanG-ciyuan/cross-border-ad-agent
 ```
 
-Windows 克隆命令：
+### 1.2 在空白 Windows 电脑上克隆
 
 ```powershell
-git clone https://github.com/KanG-ciyuan/cross-border-ad-agent.git D:\AdFlow\app
-Set-Location D:\AdFlow\app
+New-Item -ItemType Directory -Force C:\AdFlow | Out-Null
+git clone https://github.com/KanG-ciyuan/cross-border-ad-agent.git C:\AdFlow\app
+Set-Location C:\AdFlow\app
 ```
+
+如果 `C:\AdFlow` 已存在，先不要删除其中任何文件；改用一个新的空目录，例如 `C:\AdFlow\app-new`，或先报告冲突。克隆命令本身会创建项目文件，用户不需要事先准备 AdFlow 文件夹。
 
 GitHub 默认分支是 `feat/mvp-foundation`，它包含最新完整交接；旧 `main` 只是历史基础版本。先从默认分支创建新的工作分支，例如：
 
@@ -33,7 +51,7 @@ git switch -c deepseek/windows-local-runtime
 
 不要直接修改、覆盖或合并 `main`。不要删除 Cloudflare Worker、D1 数据、Secrets 或任何历史分支。
 
-当前交接基线提交是 `176e25c`。克隆后如果 HEAD 不是该提交或更新提交，先执行 `git fetch --all --prune` 和 `git status`，不要自行猜测使用哪个分支。
+当前交接基线提交是 `1848cc0`。克隆后如果 HEAD 不是该提交或更新提交，先执行 `git fetch --all --prune` 和 `git status`，不要自行猜测使用哪个分支。
 
 这是 GitHub **私有仓库**。如果克隆提示无权限：
 
