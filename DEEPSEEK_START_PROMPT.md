@@ -4,6 +4,14 @@
 
 ## 一、仓库与分支
 
+本项目原始开发电脑是 macOS，当前本地仓库工作目录为：
+
+```text
+/Users/kang/Documents/ChatGPT/跨境电商/.worktrees/mvp-foundation
+```
+
+这个路径只用于说明项目来源，Windows 上不要尝试访问它。Windows 的唯一工作目录是 `D:\AdFlow\app`。
+
 私有仓库：
 
 ```text
@@ -24,6 +32,15 @@ git switch -c deepseek/windows-local-runtime
 ```
 
 不要直接修改、覆盖或合并 `main`。不要删除 Cloudflare Worker、D1 数据、Secrets 或任何历史分支。
+
+当前交接基线提交是 `176e25c`。克隆后如果 HEAD 不是该提交或更新提交，先执行 `git fetch --all --prune` 和 `git status`，不要自行猜测使用哪个分支。
+
+这是 GitHub **私有仓库**。如果克隆提示无权限：
+
+1. 在 Windows 的 GitHub Desktop 或 Git Credential Manager 中登录拥有 `KanG-ciyuan` 仓库权限的 GitHub 账号；或
+2. 让仓库所有者把当前 Windows 使用的 GitHub 账号添加为协作者。
+
+不要把 GitHub Personal Access Token 写入本提示词、代码、`.env`、聊天记录或日志。DeepSeek Harness 读取的是克隆后的本地文件，不需要把私有仓库内容发送到其他外部服务。
 
 ## 二、必须先完整阅读
 
@@ -199,6 +216,8 @@ pnpm test
 pnpm build
 git diff --check
 ```
+
+如果 `pnpm` 尚未安装，先使用 Corepack 启用仓库声明的 pnpm 版本；如果 Node.js、FFmpeg 或 FFprobe 缺失，先报告缺失项，不要用假版本或静态输出冒充验证。
 
 先报告：
 
