@@ -2,7 +2,7 @@
 
 更新时间：2026-08-28
 
-私有仓库：`https://github.com/KanG-ciyuan/cross-border-ad-agent`
+公开仓库：`https://github.com/KanG-ciyuan/cross-border-ad-agent`
 
 本文是另一台电脑或另一种 Agent Harness 接手项目时的第一入口。它记录产品不能偏离的边界、当前事实、历史状态、已知失败、环境迁移方向和恢复顺序。不得仅凭页面可见或测试通过就宣称真实模型链路已经完成。
 
