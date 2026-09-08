@@ -27,7 +27,7 @@ AdFlow 是一个面向公司运营人员的跨境电商广告生产工作台，�
 
 这个路径只用于说明项目原来位于哪台 Mac，Windows 上不要尝试访问它。Windows 电脑可以使用任意有写权限的本地目录，不要求存在 `D:` 盘。下面以 `C:\AdFlow\app` 为例；如果电脑没有 C 盘可用空间，可改成 `E:\AdFlow\app`、用户目录或其他实际存在的路径。
 
-私有仓库：
+公开仓库：
 
 ```text
 https://github.com/KanG-ciyuan/cross-border-ad-agent
@@ -53,12 +53,9 @@ git switch -c deepseek/windows-local-runtime
 
 当前交接基线提交是 `1848cc0`。克隆后如果 HEAD 不是该提交或更新提交，先执行 `git fetch --all --prune` 和 `git status`，不要自行猜测使用哪个分支。
 
-这是 GitHub **私有仓库**。如果克隆提示无权限：
+这是 GitHub **公开仓库**，克隆不需要仓库访问权限。如果拉取失败，先检查网络、Git 和代理配置。
 
-1. 在 Windows 的 GitHub Desktop 或 Git Credential Manager 中登录拥有 `KanG-ciyuan` 仓库权限的 GitHub 账号；或
-2. 让仓库所有者把当前 Windows 使用的 GitHub 账号添加为协作者。
-
-不要把 GitHub Personal Access Token 写入本提示词、代码、`.env`、聊天记录或日志。DeepSeek Harness 读取的是克隆后的本地文件，不需要把私有仓库内容发送到其他外部服务。
+不要把 GitHub Personal Access Token 写入本提示词、代码、`.env`、聊天记录或日志。DeepSeek Harness 读取的是克隆后的本地文件；公开仓库不代表可以把本地密钥、用户素材或运行配置上传到其他外部服务。
 
 ## 二、必须先完整阅读
 
